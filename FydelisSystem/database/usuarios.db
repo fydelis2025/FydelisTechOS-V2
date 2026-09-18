@@ -1,0 +1,42 @@
+-- ==========================================
+-- TABELA: USUÁRIOS
+-- ==========================================
+CREATE TABLE usuarios (
+    id_usuario    INTEGER PRIMARY KEY AUTOINCREMENT,
+    nome_usuario  TEXT NOT NULL UNIQUE,      -- "Fydelis"
+    nome_exibicao TEXT,                      -- "FydelisTech Administrator"
+    email         TEXT,
+    hash_senha    TEXT NOT NULL,             -- 🔑 SENHA CRIPTOGRAFADA (SHA3-512 + Salte)
+    salte         TEXT NOT NULL,             -- Salte único por usuário
+    foto_perfil   TEXT,                      -- caminho da imagem
+    tipo_conta    TEXT NOT NULL DEFAULT 'padrao', -- admin, padrao, convidado
+    ativo         INTEGER NOT NULL DEFAULT 1,     -- 1 = ativo, 0 = bloqueado
+    ultimo_login  INTEGER,                   -- timestamp
+    criado_em     INTEGER DEFAULT (strftime('%s','now'))
+);
+
+-- ==========================================
+-- TABELA: PERMISSÕES
+-- ==========================================
+CREATE TABLE permissoes (
+    id_permissao  INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_usuario    INTEGER,
+    modulo        TEXT,       -- "fydeliswin", "fydelisweb", "remoto", "config"
+    pode_ler      INTEGER DEFAULT 1,
+    pode_escrever INTEGER DEFAULT 0,
+    pode_executar INTEGER DEFAULT 0,
+    FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario)
+);
+
+-- ==========================================
+-- TABELA: SESSÕES
+-- ==========================================
+CREATE TABLE sessoes (
+    id_sessao     INTEGER PRIMARY KEY AUTOINCREMENT,
+    id_usuario    INTEGER,
+    token_sessao  TEXT UNIQUE,    -- 🔑 Token para manter logado
+    ip_dispositivo TEXT,
+    inicio_sessao INTEGER,
+    expira_em     INTEGER,
+    FOREIGN KEY (id_usuario) REFERENCES usuarios(id_usuario)
+);
