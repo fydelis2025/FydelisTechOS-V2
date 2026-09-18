@@ -60,6 +60,7 @@ INCLUDEPATH += $$PWD/src \
 # ==========================================
 SOURCES += \
     src/core/main.cpp \
+	src/core/fydelispanic.cpp
     src/core/securevault.cpp \
     src/core/configmanager.cpp \
     src/core/securitymanager.cpp \
@@ -110,6 +111,7 @@ SOURCES += \
 # 📝 CABEÇALHOS (.h) — COMPLETO + UPDATE
 # ==========================================
 HEADERS += \
+	src/core/fydelispanic.h \
     src/core/securevault.h \
     src/core/configmanager.h \
     src/core/securitymanager.h \
