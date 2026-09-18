@@ -1,5 +1,6 @@
 // ==========================================
 // PONTO DE ENTRADA — FYDELIS TECH OS v2.0
+// Com Tela de Exceção Estilo Hacker Integrada
 // De Salvador • Bahia 🇧🇷
 // ==========================================
 #include <QApplication>
@@ -7,36 +8,49 @@
 #include <QDir>
 #include <QTimer>
 #include <QDebug>
+
+// ✅ SEUS MÓDULOS — NADA ALTERADO
 #include "securevault.h"
 #include "securitymanager.h"
 #include "configmanager.h"
-#include "thememanager.h"   // ✅ GERENCIADOR DE TEMAS
+#include "thememanager.h"
 #include "fsmap.h"
 #include "ui/splash/splashscreen.h"
 #include "ui/login/loginscreen.h"
 #include "ui/desktop/desktop.h"
 
-// ✅ CRIA TODAS AS PASTAS AUTOMATICAMENTE
+// ✅ === NOVO: TELA DE EXCEÇÃO ===
+#include "fydelispanic.h"
+
+void tratarErroGlobal(QtMsgType tipo, const QMessageLogContext& contexto, const QString& mensagem) {
+    if (tipo == QtFatalMsg) {
+        FydelisPanic::instancia().definirProcesso("Sistema FydelisTech OS");
+        FydelisPanic::instancia().disparar(
+            "0x0000FYFAT",
+            mensagem,
+            contexto.file ? QString::fromUtf8(contexto.file) : "Sistema",
+            "0x0"
+        );
+    }
+}
+// ✅ === FIM DA TELA DE EXCEÇÃO ===
+
+// ✅ CRIA TODAS AS PASTAS AUTOMATICAMENTE — ORIGINAL INTACTO
 static bool criarEstruturaPastas() {
     QStringList pastas = {
-        // 🛡️ Sistema FydelisTech
         "FydelisSystem/database",
         "FydelisSystem/security",
         "FydelisSystem/profiles",
         "FydelisSystem/kernel",
         "FydelisSystem/drivers",
         "FydelisSystem/services",
-        // 🗄️ Banco de Dados (config.db fica aqui!)
         "FydelisSystem/database",
-        // 🪟 Compatibilidade Windows
         "Windows/System32",
         "Windows/System64",
         "Windows/System32/WindowsPowerShell",
-        // ✅ APLICATIVOS — FYDELIS TECH SUITE
         "Program Files/FydelisTech-Suite",
         "Program Files/FydelisTech-Suite/FydelisTech-Web",
         "Program Files/FydelisTech-Suite/FydelisTech-DiscoTools",
-        // 👤 Usuários
         "Users",
         "ProgramData"
     };
@@ -52,13 +66,12 @@ static bool criarEstruturaPastas() {
     return todasCriadas;
 }
 
-// ✅ APLICAR TEMA SALVO DO BANCO SQLite
+// ✅ APLICAR TEMA SALVO — ORIGINAL INTACTO
 static void aplicarTemaSalvo() {
     QString nomeTema = ConfigManager::instancia().temaAtual();
     qDebug() << "🎨 Aplicando tema salvo:" << nomeTema;
-
     auto &tm = ThemeManager::instancia();
-
+    
     if (nomeTema == "Azul Celeste") {
         tm.carregarTemaDoJSON(R"({
             "nome": "Azul Celeste",
@@ -84,7 +97,6 @@ static void aplicarTemaSalvo() {
             "texto": {"primaria": "#e0e0f0", "secundaria": "#9090a0", "destaque": "#b0b0d0"}
         })");
     } else {
-        // ✅ PADRÃO: Vidro Neon FydelisTech
         tm.carregarTemaDoJSON(R"({
             "nome": "FydelisTech Vidro Neon",
             "fundo": {"cor1": "#1a0f47", "cor2": "#251b60", "cor3": "#0f173a"},
@@ -96,6 +108,9 @@ static void aplicarTemaSalvo() {
 }
 
 int main(int argc, char *argv[]) {
+    // ✅ === PRIMEIRA LINHA — ATIVAR CAPTURA DE ERROS ===
+    qInstallMessageHandler(tratarErroGlobal);
+
     QApplication app(argc, argv);
 
     // ==================================================
@@ -104,7 +119,7 @@ int main(int argc, char *argv[]) {
     criarEstruturaPastas();
 
     // ==================================================
-    // 🚀 ETAPA 1 — INICIALIZAR COFRE SEGURO (ANTES DE TUDO)
+    // 🔒 ETAPA 1 — INICIALIZAR COFRE SEGURO
     // ==================================================
     if (!SecureVault::instancia().inicializar()) {
         QMessageBox::critical(nullptr, "Erro Fatal",
@@ -113,7 +128,7 @@ int main(int argc, char *argv[]) {
     }
 
     // ==================================================
-    // 🔒 ETAPA 2 — INICIALIZAR SEGURANÇA (chaves + salte)
+    // 🔒 ETAPA 2 — INICIALIZAR SEGURANÇA
     // ==================================================
     SecurityManager::instancia().inicializarSeguranca();
 
@@ -124,7 +139,7 @@ int main(int argc, char *argv[]) {
     qDebug() << "✅ Banco de configurações SQLite pronto em: FydelisSystem/database/config.db";
 
     // ==================================================
-    // 🎨 ETAPA 3.5 — APLICAR TEMA SALVO DO BANCO
+    // 🎨 ETAPA 3.5 — APLICAR TEMA SALVO
     // ==================================================
     aplicarTemaSalvo();
     qDebug() << "✅ Tema aplicado:" << ConfigManager::instancia().temaAtual();
@@ -139,7 +154,6 @@ int main(int argc, char *argv[]) {
         LoginScreen *login = new LoginScreen;
         login->show();
 
-        // ✅ Após login → abrir Área de Trabalho com TEMA APLICADO
         QObject::connect(login, &LoginScreen::loginConcluido, [&](){
             login->close();
             DesktopArea *desktop = new DesktopArea;
