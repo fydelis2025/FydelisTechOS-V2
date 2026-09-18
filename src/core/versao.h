@@ -1,0 +1,13 @@
+#ifndef VERSAO_H
+#define VERSAO_H
+
+#define FYDELIS_VERSION_MAJOR  2
+#define FYDELIS_VERSION_MINOR  0
+#define FYDELIS_VERSION_PATCH  0
+#define FYDELIS_BUILD_DATE     __DATE__
+#define FYDELIS_BUILD_TIME     __TIME__
+
+#define FYDELIS_VERSION_STR "2.0.0"
+#define FYDELIS_FULL_VERSION "FydelisTech OS v2.0.0 — " FYDELIS_BUILD_DATE
+
+#endif // VERSAO_H
