@@ -101,3 +101,10 @@ make -j$(nproc)
 
 # Executar
 ./bin/FydelisTechOS
+
+
+---
+
+Pronto! É só **copiar tudo** e colar no seu `README.md` — fica perfeito no GitHub, com formatação, tabelas, blocos de código e tudo organizado! 🎯🚀🇧🇷
+
+Ficou do jeito que quer? 😄
