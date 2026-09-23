@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/">
+        <file>images/logo.png</file>
+        <file>slides/slide1.png</file>  <!-- 🇧🇷 Logo + Slogan -->
+        <file>slides/slide2.png</file>  <!-- 🔒 Segurança em primeiro lugar -->
+        <file>slides/slide3.png</file>  <!-- 🚀 Velocidade e desempenho -->
+        <file>slides/slide4.png</file>  <!-- 💻 Compatibilidade Windows -->
+        <file>slides/slide5.png</file>  <!-- 🤖 IA integrada -->
+        <file>slides/slide6.png</file>  <!-- 💪 Feito no Brasil -->
+    </qresource>
+</RCC>
