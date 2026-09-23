@@ -1,0 +1,33 @@
+{
+    "nome": "FydelisTech Vidro Neon",
+    "autor": "FydelisTech OS — Salvador, Bahia 🇧🇷",
+    "versao": "1.1",
+    "fundo": {
+        "tipo": "gradiente",
+        "cor1": "#1a0f47",
+        "cor2": "#251b60",
+        "cor3": "#0f173a"
+    },
+    "janelaVidro": {
+        "fundo": "rgba(60, 40, 110, 0.40)",
+        "borda": "rgba(140, 180, 255, 0.35)",
+        "raioCantos": 24,
+        "brilhoCor": "rgba(100, 140, 255, 0.35)",
+        "brilhoIntensidade": 50
+    },
+    "barraTarefas": {
+        "fundo": "rgba(30, 20, 70, 0.50)",
+        "bordaSuperior": "rgba(140, 180, 255, 0.25)",
+        "altura": 58
+    },
+    "texto": {
+        "primaria": "#e6eeff",
+        "secundaria": "#94a3b8",
+        "destaque": "#a5b4fc"
+    },
+    "botao": {
+        "fundo": "rgba(79, 70, 229, 0.60)",
+        "hover": "rgba(99, 102, 241, 0.80)",
+        "raioCantos": 8
+    }
+}
