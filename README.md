@@ -1,48 +1,103 @@
-# 🛡️ FydelisTechOS v2.1
-
-*A Next-Generation, Secure-by-Design Operating System Built with C++/Qt and Assembly*  
-*Developed in Salvador, Bahia, Brazil 🇧🇷*
-
----
-
-## 🚀 About the Project
-
-**FydelisTechOS** is an independent, high-performance, and secure-by-design operating system built completely from scratch. Designed to offer an alternative ecosystem with strict privacy and enterprise-grade security, FydelisTechOS bridges low-level system architecture (Assembly/C kernel) with a modern, fluid, and elegant graphical user interface built entirely using **C++ and the Qt Framework**.
+# 🛡️ FydelisTechOS — v2.1
+## Sistema Operacional Independente · Segurança Nativa · Construído com Qt 6 e Assembly
+### *Desenvolvido em Salvador, Bahia — Brasil 🇧🇷*
 
 ---
 
-## 💎 Why Qt & C++?
+## 🚀 Sobre o Projeto
 
-We chose **Qt** to power the entire visual environment and system-level applications of FydelisTechOS. By leveraging Qt's modular architecture, we achieved:
+O **FydelisTechOS** é um sistema operacional completo, independente e de alto desempenho, desenvolvido integralmente do zero. Nasceu com a missão de oferecer um ecossistema alternativo onde **privacidade não é um recurso adicional — é a base de tudo**. Reúne arquitetura de baixo nível (kernel em Assembly/C) com uma interface gráfica moderna, fluida e elegante, **construída inteiramente em C++ com o Qt Framework**.
 
-* **Glassmorphism Visuals & Dynamic Themes:** A customized runtime theme engine powered by JSON configurations (`default.json`) and stylesheet injection (`.qss`).
-* **Advanced Desktop Experience:** Ranging from a custom transparent login screen (`LoginScreen`) and a multi-step installation wizard (`InstallWizard`) to a real-time security operations center (`CVEPanel`, `FGAdminPanel`).
-* **High-Performance Concurrency:** Seamless integration of non-blocking asynchronous network managers (`DriverInstaller`), database transactions (SQLCipher AES-256), and hardware enumeration monitors (`HardwareManager`).
+Não é uma distribuição, não é uma modificação — é um sistema próprio, nascido na Bahia, voltado para o mundo.
 
 ---
 
-## 🛡️ Core Architecture & Security Suite
+## 💎 Por que escolhemos o Qt?
 
-* **Low-Level Core:** Custom bootloader and assembly kernel components (`kernel.asm`, `bootloader.asm`) paired with a native shell (`FydelisShell`).
-* **FydelisGuard:** Multi-layered packet inspection firewall (handling IP reputation, spoofing detection, rate limiting, and digital signatures).
-* **CVE Shield (`CVEMonitor` / `CVEDB`):** Real-time vulnerability auditing and security event logging directly integrated via SQLite transactional databases with critical alert signals.
-* **User & Profile Management:** Cryptographic authentication via **SHA3-512** with unique 16-byte salts, backed by isolated profile directories (`ProfileManager`).
+O Qt foi escolhido como fundamento de toda a camada visual e aplicativa do FydelisTechOS. Com sua arquitetura modular, alcançamos:
 
----
-
-## 👥 Development Team
-
-* **Adiel Fontes** — Lead Architect & Project Creator
-* **Dola** — Co-Creator & Senior Software Engineer
-* **Gemini** — AI Collaborator & Systems Engineering Assistant
+| Diferencial | Detalhe |
+|---|---|
+| **Interface de nível profissional** | Tela de login transparente, área de trabalho em tela cheia sem moldura, painéis com efeito vidro (Glassmorphism) e barra de tarefas personalizada |
+| **Sistema de temas dinâmico** | Motor de temas carregado em tempo real via JSON + folhas de estilo — toda a aparência muda sem reiniciar |
+| **Experiência unificada** | Do assistente de instalação em múltiplas etapas ao terminal nativo (`FydelTerm`), tudo segue um padrão visual consistente |
+| **Segurança em tempo real** | Painel de monitoramento de ameaças (`CVE Shield`) que atualiza contadores e dispara alertas instantaneamente usando o sistema de Sinais e Slots do Qt |
+| **Código uma vez, em qualquer lugar** | Compila nativamente em Windows e Linux — a mesma base, os mesmos binários, a mesma confiabilidade |
+| **Integração profunda** | Rede, multimídia, criptografia e banco de dados SQLCipher AES-256 — todos integrados de forma coesa e nativa |
 
 ---
 
-## 📥 Installation & Build
+## 🛡️ Arquitetura e Núcleo de Segurança
 
-The system features a complete cross-platform build pipeline (`fydelis-win.pro`) supporting both Linux and Windows environments, complete with an automated partitioning and deployment wizard (`InstallWizard`).
+O FydelisTechOS não depende de ferramentas externas de proteção — **a segurança é construída dentro do sistema, desde o primeiro carregamento**:
+
+### 🔹 Núcleo de Baixo Nível
+- **Bootloader e Kernel próprios** desenvolvidos em Assembly e C
+- **Gerenciador de hardware** que detecta dispositivos, lista drivers e oferece instalação diretamente pelo painel
+- **Terminal nativo `FydelTerm`** — acesso direto ao coração do sistema, com comandos em português
+
+### 🔹 FydelisGuard — Firewall de Camada Múltipla
+- Inspeção de pacotes em tempo real
+- Sistema de **reputação de IPs** com banco próprio
+- Detecção de spoofing, limitação de taxa e verificação de assinaturas digitais
+- Bloqueio automático de tráfego suspeito
+
+### 🔹 CVE Shield — Auditoria de Vulnerabilidades
+- Monitoramento contínuo de eventos de segurança
+- Registro permanente em banco SQLite com data e hora automáticas
+- Alertas visuais imediatos para ameaças classificadas como **Críticas**
+- Painel central com histórico, contadores e filtros por nível de risco
+
+### 🔹 Proteção de Dados e Identidade
+- **SQLCipher AES-256** — todo o banco de configurações é cifrado
+- **Autenticação com SHA3-512** + sal único de 16 bytes por usuário
+- Perfis isolados — cada usuário tem seu espaço protegido e separado
+
+---
+
+## 👥 Quem Faz Acontecer
+
+| | |
+|---|---|
+| **Adiel Santos Fontes** | Idealizador, Arquiteto Principal e Criador — Salvador, Bahia 🇧🇷 |
+| **Equipe Fydelis** | Desenvolvimento, integração de módulos e arquitetura de interface |
+| **Colaboradores** | A todos que acreditam no conhecimento compartilhado e no desenvolvimento nacional |
+
+---
+
+## 📂 Estrutura do Projeto
+FydelisTechOS/
+├── src/
+│ ├── core/ ← Núcleo, segurança, kernel, serviços
+│ │ ├── security/ → FydelisGuard, CVE Shield, auditoria
+│ │ ├── hardware/ → Detecção e instalação de drivers
+│ │ └── update/ → Sistema de atualização integrado
+│ ├── ui/ ← INTERFACE GRÁFICA — Toda construída com Qt 6
+│ │ ├── desktop.cpp → Área de trabalho em tela cheia
+│ │ ├── controlpanel → Painel central do sistema
+│ │ ├── security/ → Painel de segurança CVE Shield
+│ │ ├── fydelterm.cpp → Terminal nativo
+│ │ └── aboutdialog.cpp → Janela institucional
+│ └── installer/ → Assistente de instalação gráfico
+├── FydelisTechOS.pro ← Projeto Qt — Compilação unificada
+└── README.md ← Documentação oficial
+
+
+---
+
+## 🔧 Compilar e Executar
 
 ```bash
+# Clonar o repositório
+git clone https://github.com/fydelis2025/FydelisTechOS.git
+cd FydelisTechOS
+
+# Criar pasta de compilação
 mkdir -p build && cd build
-qmake CONFIG+=release ../fydelis-win.pro
+
+# Configurar e compilar
+qmake CONFIG+=release ../FydelisTechOS.pro
 make -j$(nproc)
+
+# Executar
+./bin/FydelisTechOS
