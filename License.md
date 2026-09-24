@@ -105,7 +105,7 @@ Esta Licença é regida pelas leis da República Federativa do Brasil.
 Fica eleito o foro da Comarca de Salvador, Bahia, para dirimir
 quaisquer dúvidas ou controvérsias decorrentes desta Licença.
 
-==========================================================================
-FydelisTech — Construindo o futuro, do zero.
-                              © 2026 FydelisTech. Todos os direitos reservados.
-==========================================================================
+==================================================================================================================
+                                  FydelisTech — Construindo o futuro, do zero.
+                                © 2026 FydelisTech. Todos os direitos reservados.
+==================================================================================================================
