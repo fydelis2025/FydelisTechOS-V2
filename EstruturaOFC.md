@@ -1,3 +1,4 @@
+```text
 FydelisTechOS/
 │
 ├── FydelisSystem/                  🛡️ NÚCLEO DO SISTEMA
