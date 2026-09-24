@@ -2,7 +2,7 @@ FydelisTechOS/
 │
 ├── src/
 │   │
-│   ├── core/                          🧠 NÚCLEO DO SISTEMA
+│   ├── core/                        🧠 NÚCLEO DO SISTEMA
 │   │   ├── main.cpp
 │   │   ├── versao.h
 │   │   │
@@ -112,13 +112,13 @@ FydelisTechOS/
 │   ├── drivers/                        🛠️ DRIVERS DE HARDWARE
 │   │   ├── timer.asm                   # Contador de tempo (PIT/APIC)
 │   │   ├── apic.asm                    # Controlador de interrupções avançado
-│   │   ├── ata.asm                      # Controlador de disco
-│   │   ├── keyboard.asm                 # Entrada de teclado
-│   │   ├── audio.asm                    # Sistema de som
-│   │   ├── video.asm                    # Saída gráfica
-│   │   ├── rede.asm                     # Controlador de rede
-│   │   ├── wifi.asm                     # Driver Wi-Fi nativo
-│   │   └── bluetooth.asm                # Driver Bluetooth
+│   │   ├── ata.asm                     # Controlador de disco
+│   │   ├── keyboard.asm                # Entrada de teclado
+│   │   ├── audio.asm                   # Sistema de som
+│   │   ├── video.asm                   # Saída gráfica
+│   │   ├── rede.asm                    # Controlador de rede
+│   │   ├── wifi.asm                    # Driver Wi-Fi nativo
+│   │   └── bluetooth.asm               # Driver Bluetooth
 │   │
 │   ├── pentest/                        🔬 FERRAMENTAS DE ANÁLISE
 │   │   └── pentest.asm                 # Módulo de pentest em nível baixo
@@ -126,20 +126,20 @@ FydelisTechOS/
 │   ├── apps/                           📦 APLICATIVOS — POR CATEGORIAS
 │   │   │
 │   │   ├── produtividade/              📝 ESCRITA, PLANILHAS, APRESENTAÇÕES
-│   │   │   ├── fydelis_office/          📊 PACOTE DE ESCRITÓRIO ✅
+│   │   │   ├── fydelis_office/         📊 PACOTE DE ESCRITÓRIO ✅
 │   │   │   │   ├── compartilhado/      # Estilos e formatos comuns
 │   │   │   │   │   ├── formatos.h
 │   │   │   │   │   └── estilos.qss
-│   │   │   │   ├── writer/            # Editor de Texto — .fydoc
+│   │   │   │   ├── writer/             # Editor de Texto — .fydoc
 │   │   │   │   │   ├── fydelis_writer.cpp
 │   │   │   │   │   └── fydelis_writer.h
-│   │   │   │   ├── calc/              # Planilhas — .fysheet
+│   │   │   │   ├── calc/               # Planilhas — .fysheet
 │   │   │   │   │   ├── fydelis_calc.cpp
 │   │   │   │   │   └── fydelis_calc.h
-│   │   │   │   ├── slide/             # Apresentações — .fyslide
+│   │   │   │   ├── slide/              # Apresentações — .fyslide
 │   │   │   │   │   ├── fydelis_slide.cpp
 │   │   │   │   │   └── fydelis_slide.h
-│   │   │   │   └── recursos/          # Modelos, fontes, ícones
+│   │   │   │   └── recursos/           # Modelos, fontes, ícones
 │   │   │   │       ├── modelos/
 │   │   │   │       ├── fontes/
 │   │   │   │       └── icones/
@@ -148,24 +148,24 @@ FydelisTechOS/
 │   │   │   ├── fydelis_paint/          🎨 Editor de Imagens
 │   │   │   └── fydelis_view/           👁️ Visualizador de Arquivos
 │   │   │
-│   │   ├── internet/                    🌍 NAVEGAÇÃO E COMUNICAÇÃO
+│   │   ├── internet/                   🌍 NAVEGAÇÃO E COMUNICAÇÃO
 │   │   │   ├── fydelis_web/            # Navegador padrão
 │   │   │   ├── fydelis_web_pt/         # Navegador modo pentest
 │   │   │   └── fydelis_email/          # Cliente de e-mail
 │   │   │
-│   │   ├── multimidia/                  🎵 ÁUDIO, VÍDEO E CAPTURA
+│   │   ├── multimidia/                 🎵 ÁUDIO, VÍDEO E CAPTURA
 │   │   │   ├── fydelis_player/         # Reprodutor de mídia
 │   │   │   ├── fydelis_cam/            # Controle de webcam
 │   │   │   └── fydelis_capture/        # Gravação de tela
 │   │   │
-│   │   ├── sistema/                     ⚙️ FERRAMENTAS DO SISTEMA
+│   │   ├── sistema/                    ⚙️ FERRAMENTAS DO SISTEMA
 │   │   │   ├── disco_tools/            # Gerenciador de partições
 │   │   │   └── updater/                # Atualizador de sistema
 │   │   │
-│   │   └── seguranca/                   🛡️ FERRAMENTAS DE SEGURANÇA
-│   │       ├── fydelis_attack/          # Ferramenta de pentest
-│   │       ├── fydelisguard_panel/      # Painel do Firewall
-│   │       └── fydelis_analyzer/        # Análise de arquivos e ameaças
+│   │   └── seguranca/                  🛡️ FERRAMENTAS DE SEGURANÇA
+│   │       ├── fydelis_attack/         # Ferramenta de pentest
+│   │       ├── fydelisguard_panel/     # Painel do Firewall
+│   │       └── fydelis_analyzer/       # Análise de arquivos e ameaças
 │   │
 │   ├── ui/                             🖥️ INTERFACE GRÁFICA
 │   │   ├── splash/                     # Tela de abertura
@@ -181,7 +181,7 @@ FydelisTechOS/
 │   │   ├── controlpanel.h
 │   │   ├── fileexplorer.cpp            # Explorador de Arquivos
 │   │   ├── fileexplorer.h
-│   │   ├── fydelterm.cpp                # Terminal do Sistema 💻
+│   │   ├── fydelterm.cpp               # Terminal do Sistema 💻
 │   │   ├── fydelterm.h
 │   │   ├── aboutdialog.cpp             # Tela "Sobre"
 │   │   ├── aboutdialog.h
@@ -206,7 +206,7 @@ FydelisTechOS/
 │   │   ├── partitionmanager.h
 │   │   ├── slideshow.cpp
 │   │   ├── slideshow.h
-│   │   └── pages/                       # Páginas do assistente
+│   │   └── pages/                      # Páginas do assistente
 │   │       ├── bemvindopage.cpp
 │   │       ├── bemvindopage.h
 │   │       ├── idiomapage.cpp
@@ -225,17 +225,17 @@ FydelisTechOS/
 │   ├── shell/                          🖥️ INTERPRETADORES E CONSOLE
 │   └── themes/                         🎨 TEMA E ESTILOS VISUAIS
 │
-├── resources/                         🎨 RECURSOS COMPARTILHADOS
+├── resources/                          🎨 RECURSOS COMPARTILHADOS
 │   ├── icons/                          # Ícones do sistema
 │   ├── images/                         # Imagens e ilustrações
 │   └── sounds/                         # Efeitos e áudios
 │
-├── bin/                               📦 SAÍDA DOS EXECUTÁVEIS
+├── bin/                                📦 SAÍDA DOS EXECUTÁVEIS
 │   ├── Produtividade/                  # FydelisOffice + Editores
 │   ├── Internet/                       # Navegadores e Email
 │   ├── Multimidia/                     # Player, Câmera, Captura
 │   ├── Sistema/                        # Ferramentas e Atualizador
 │   └── Seguranca/                      # Firewall, Antivírus, Pentest
 │
-├── FydelisTechOS.pro                  ⚙️ PROJETO QT — Configuração Completa
+├── FydelisTechOS.pro                   ⚙️ PROJETO QT — Configuração Completa
 └── Makefile                            🔨 COMPILAÇÃO DO KERNEL NATIVO
