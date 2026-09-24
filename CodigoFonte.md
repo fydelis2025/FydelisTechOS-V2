@@ -1,3 +1,4 @@
+```text
 FydelisTechOS/
 ├── src/
 │   ├── core/                        🧠 NÚCLEO DO SISTEMA
