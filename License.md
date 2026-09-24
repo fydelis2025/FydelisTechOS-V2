@@ -17,18 +17,18 @@ TRABALHO ORIGINAL:
 DIREITOS RESERVADOS:
   © 2026 FydelisTech. Todos os direitos reservados.
 
-==========================================================================
+==================================================================================================================
 1. OBJETO
-==========================================================================
+==================================================================================================================
 Esta Licença regula o uso da obra acima identificada, desenvolvida
 integralmente de forma original pela FydelisTech, sem incorporação
 de código de terceiros. Todo o conteúdo — código-fonte, bibliotecas,
 documentação, estrutura e design — é trabalho exclusivo e propriedade
 intelectual da FydelisTech.
 
-==========================================================================
+==================================================================================================================
 2. PROPRIEDADE INTELECTUAL
-==========================================================================
+==================================================================================================================
 A obra não é de domínio público nem é disponibilizada sob licença
 de código aberto reconhecida. O código-fonte, arquivos binários,
 estrutura, design, nomes comerciais e marcas associadas são
@@ -39,9 +39,9 @@ Nada nesta Licença implica transferência de titularidade ou
 renúncia aos direitos autorais. Todos os direitos não concedidos
 expressamente aqui são reservados integralmente à FydelisTech.
 
-==========================================================================
+==================================================================================================================
 3. CONCESSÃO DE USO
-==========================================================================
+==================================================================================================================
 A FydelisTech concede ao Usuário final uma licença não exclusiva,
 não transferível e limitada para:
 
@@ -55,9 +55,9 @@ não transferível e limitada para:
   c) Integração com outros componentes do ecossistema FydelisTech,
      sempre mantendo a identificação e os créditos originais.
 
-==========================================================================
+==================================================================================================================
 4. RESTRIÇÕES
-==========================================================================
+==================================================================================================================
 É EXPRESSAMENTE VEDADO, sem autorização prévia e por escrito da
 FydelisTech:
 
@@ -78,9 +78,9 @@ FydelisTech:
 
   e) Incorporar a obra a produtos ou serviços de terceiros.
 
-==========================================================================
+==================================================================================================================
 5. GARANTIA E RESPONSABILIDADE
-==========================================================================
+==================================================================================================================
 A obra é disponibilizada "NO ESTADO", sem garantia de qualquer
 natureza, expressa ou implícita, incluindo, sem limitação,
 garantias de adequação a determinada finalidade, comercialização
@@ -90,17 +90,17 @@ Em nenhum caso a FydelisTech será responsável por perdas, danos
 diretos, indiretos, incidentes ou consequenciais decorrentes
 do uso ou da impossibilidade de uso da obra.
 
-==========================================================================
+==================================================================================================================
 6. VIGÊNCIA E RESCISÃO
-==========================================================================
+==================================================================================================================
 Esta Licença vigorará enquanto durar a proteção dos direitos
 autorais sobre a obra. O descumprimento de qualquer disposição
 aqui contida rescinde automaticamente a permissão de uso,
 obrigando a imediata remoção e cessação de utilização.
 
-==========================================================================
+==================================================================================================================
 7. LEI APLICÁVEL E FORO
-==========================================================================
+==================================================================================================================
 Esta Licença é regida pelas leis da República Federativa do Brasil.
 Fica eleito o foro da Comarca de Salvador, Bahia, para dirimir
 quaisquer dúvidas ou controvérsias decorrentes desta Licença.
