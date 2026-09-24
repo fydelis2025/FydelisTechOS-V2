@@ -1,16 +1,12 @@
 FydelisTechOS/
-│
 ├── src/
-│   │
 │   ├── core/                        🧠 NÚCLEO DO SISTEMA
 │   │   ├── main.cpp
 │   │   ├── versao.h
-│   │   │
 │   │   ├── fydelispanic.cpp            # Tela de exceção estilo hacker
 │   │   ├── fydelispanic.h
 │   │   ├── fydelispanic_excecao.cpp
 │   │   ├── fydelispanic_excecao.h
-│   │   │
 │   │   ├── securevault.cpp             # Cofre de dados criptografados
 │   │   ├── securevault.h
 │   │   ├── configmanager.cpp           # Gerenciador de configurações
@@ -23,20 +19,17 @@ FydelisTechOS/
 │   │   ├── fydelispentest.h
 │   │   ├── thememanager.cpp            # Sistema de temas
 │   │   ├── thememanager.h
-│   │   │
 │   │   ├── auth/                       🔐 AUTENTICAÇÃO E PERFIS
 │   │   │   ├── usuario.cpp
 │   │   │   ├── usuario.h
 │   │   │   ├── profilemanager.cpp
 │   │   │   └── profilemanager.h
-│   │   │
 │   │   ├── hardware/                   🔧 GERENCIAMENTO DE HARDWARE
 │   │   │   ├── hardwaremanager.cpp
 │   │   │   ├── hardwaremanager.h
 │   │   │   ├── devicedatabase.h
 │   │   │   ├── driverinstaller.cpp
 │   │   │   └── driverinstaller.h
-│   │   │
 │   │   ├── security/                   🛡️ FIREWALL • ANTIVÍRUS • CVE
 │   │   │   ├── fydelisguard.cpp        # Firewall principal
 │   │   │   ├── fydelisguard.h
@@ -60,31 +53,26 @@ FydelisTechOS/
 │   │   │   ├── cvemonitor.h
 │   │   │   ├── cve_check.cpp           # Verificador de vulnerabilidades
 │   │   │   └── cve_check.h
-│   │   │
 │   │   ├── services/                   ⚙️ GERENCIADOR DE SERVIÇOS
 │   │   │   ├── fydelisservices.cpp
 │   │   │   ├── fydelisservices.h
 │   │   │   ├── servicemodel.cpp
 │   │   │   └── servicemodel.h
-│   │   │
 │   │   └── update/                     🔄 SISTEMA DE ATUALIZAÇÃO
 │   │       ├── fydelisupdater.cpp
 │   │       ├── fydelisupdater.h
 │   │       ├── updatepanel.cpp
 │   │       └── updatepanel.h
-│   │
 │   ├── bridge/                         🔗 PONTE Assembly ↔ Qt
 │   │   ├── rede_bridge.cpp             # Comunicação rede/kernel
 │   │   ├── rede_bridge.h
 │   │   ├── bluetooth_bridge.cpp        # Comunicação Bluetooth/kernel
 │   │   └── bluetooth_bridge.h
-│   │
 │   ├── include/                        📄 CABEÇALHOS COMPARTILHADOS
 │   │   ├── fydelterm.inc               # Definições do terminal
 │   │   └── syscalls/                   # Chamadas de sistema
 │   │       ├── rede_syscalls.h
 │   │       └── bt_syscalls.h
-│   │
 │   ├── boot/                           🚀 CARGA INICIAL — Assembly
 │   │   ├── bootloader.asm              # Carregador do kernel
 │   │   ├── efi_stub.asm                # Suporte EFI
@@ -94,7 +82,6 @@ FydelisTechOS/
 │   │   ├── pci.asm                     # Detecção de dispositivos PCI
 │   │   ├── interrupts.asm              # Controlador de interrupções
 │   │   └── cpu.asm                     # Detecção e configuração da CPU
-│   │
 │   ├── kernel/                         💻 NÚCLEO — Assembly Nativo
 │   │   ├── kernel.asm                  # Ponto de entrada principal
 │   │   ├── pmm.asm                     # Gerenciamento de memória física
@@ -108,7 +95,6 @@ FydelisTechOS/
 │   │   ├── editor.asm                  # Editor de texto nativo
 │   │   ├── commands.asm                # Interpretador de comandos
 │   │   └── memmap.asm                  # Mapeamento de memória
-│   │
 │   ├── drivers/                        🛠️ DRIVERS DE HARDWARE
 │   │   ├── timer.asm                   # Contador de tempo (PIT/APIC)
 │   │   ├── apic.asm                    # Controlador de interrupções avançado
@@ -119,12 +105,9 @@ FydelisTechOS/
 │   │   ├── rede.asm                    # Controlador de rede
 │   │   ├── wifi.asm                    # Driver Wi-Fi nativo
 │   │   └── bluetooth.asm               # Driver Bluetooth
-│   │
 │   ├── pentest/                        🔬 FERRAMENTAS DE ANÁLISE
 │   │   └── pentest.asm                 # Módulo de pentest em nível baixo
-│   │
 │   ├── apps/                           📦 APLICATIVOS — POR CATEGORIAS
-│   │   │
 │   │   ├── produtividade/              📝 ESCRITA, PLANILHAS, APRESENTAÇÕES
 │   │   │   ├── fydelis_office/         📊 PACOTE DE ESCRITÓRIO ✅
 │   │   │   │   ├── compartilhado/      # Estilos e formatos comuns
@@ -143,30 +126,24 @@ FydelisTechOS/
 │   │   │   │       ├── modelos/
 │   │   │   │       ├── fontes/
 │   │   │   │       └── icones/
-│   │   │   │
 │   │   │   ├── fydelis_pp/             🗹 Editor de Código Avançado
 │   │   │   ├── fydelis_paint/          🎨 Editor de Imagens
 │   │   │   └── fydelis_view/           👁️ Visualizador de Arquivos
-│   │   │
 │   │   ├── internet/                   🌍 NAVEGAÇÃO E COMUNICAÇÃO
 │   │   │   ├── fydelis_web/            # Navegador padrão
 │   │   │   ├── fydelis_web_pt/         # Navegador modo pentest
 │   │   │   └── fydelis_email/          # Cliente de e-mail
-│   │   │
 │   │   ├── multimidia/                 🎵 ÁUDIO, VÍDEO E CAPTURA
 │   │   │   ├── fydelis_player/         # Reprodutor de mídia
 │   │   │   ├── fydelis_cam/            # Controle de webcam
 │   │   │   └── fydelis_capture/        # Gravação de tela
-│   │   │
 │   │   ├── sistema/                    ⚙️ FERRAMENTAS DO SISTEMA
 │   │   │   ├── disco_tools/            # Gerenciador de partições
 │   │   │   └── updater/                # Atualizador de sistema
-│   │   │
 │   │   └── seguranca/                  🛡️ FERRAMENTAS DE SEGURANÇA
 │   │       ├── fydelis_attack/         # Ferramenta de pentest
 │   │       ├── fydelisguard_panel/     # Painel do Firewall
 │   │       └── fydelis_analyzer/       # Análise de arquivos e ameaças
-│   │
 │   ├── ui/                             🖥️ INTERFACE GRÁFICA
 │   │   ├── splash/                     # Tela de abertura
 │   │   │   ├── splashscreen.cpp
@@ -185,20 +162,16 @@ FydelisTechOS/
 │   │   ├── fydelterm.h
 │   │   ├── aboutdialog.cpp             # Tela "Sobre"
 │   │   ├── aboutdialog.h
-│   │   │
 │   │   ├── hardware/                   # Painel de Hardware
 │   │   │   ├── hardwarepanel.cpp
 │   │   │   └── hardwarepanel.h
-│   │   │
 │   │   ├── services/                   # Painel de Serviços
 │   │   │   ├── servicemanagerpanel.cpp
 │   │   │   └── servicemanagerpanel.h
-│   │   │
 │   │   └── security/                   # Painel de Segurança
 │   │       ├── cvepanel.cpp
 │   │       ├── cvepanel.h
 │   │       └── cvepanel.ui
-│   │
 │   ├── installer/                      💿 PROGRAMA DE INSTALAÇÃO
 │   │   ├── installwizard.cpp
 │   │   ├── installwizard.h
@@ -221,21 +194,17 @@ FydelisTechOS/
 │   │       ├── resumopage.h
 │   │       ├── conclupage.cpp
 │   │       └── conclupage.h
-│   │
 │   ├── shell/                          🖥️ INTERPRETADORES E CONSOLE
 │   └── themes/                         🎨 TEMA E ESTILOS VISUAIS
-│
 ├── resources/                          🎨 RECURSOS COMPARTILHADOS
 │   ├── icons/                          # Ícones do sistema
 │   ├── images/                         # Imagens e ilustrações
 │   └── sounds/                         # Efeitos e áudios
-│
 ├── bin/                                📦 SAÍDA DOS EXECUTÁVEIS
 │   ├── Produtividade/                  # FydelisOffice + Editores
 │   ├── Internet/                       # Navegadores e Email
 │   ├── Multimidia/                     # Player, Câmera, Captura
 │   ├── Sistema/                        # Ferramentas e Atualizador
 │   └── Seguranca/                      # Firewall, Antivírus, Pentest
-│
 ├── FydelisTechOS.pro                   ⚙️ PROJETO QT — Configuração Completa
 └── Makefile                            🔨 COMPILAÇÃO DO KERNEL NATIVO
