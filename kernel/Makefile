@@ -72,6 +72,8 @@ OBJS = \
     memmap.o                \
     syscall_handler.o       \
     stubs_kernel.o          \
+    estrutura.o          \
+    energia.o          \
     ../pentest/pentest.o    \
     ../boot/gdt.o           \
     ../boot/idt.o           \
