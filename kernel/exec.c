@@ -42,12 +42,17 @@ extern void     ws_atualizar_cursor(void);
 extern uint64_t rede_ler_status_link(void);
 extern uint64_t timer_ler_ticks(void);
 //bluetooth
+extern uint64_t bt_detectar_placa(void);
+extern uint64_t bt_inicializar(void);
 extern uint64_t bt_ler_status(void);
 //audio
+extern void audio_init(void);
 extern uint64_t audio_ler_status(void);
 //disco
 extern uint64_t detectar_disco(uint64_t numero_disco);
 extern uint64_t obter_tamanho_disco(void);
+//rede
+extern void rede_inicializar(void);
 
 /* Modos de exibição da Janela Principal */
 enum {
@@ -1006,7 +1011,14 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
 static int exibir_desktop_grafico(int L, int A) {
     char res_buf[48];
     char tmp[16];
-
+    
+    /* Inicializa hardware PCI antes de ler o status para o Systray */
+    audio_init();
+    if (bt_detectar_placa() != 0) {
+        bt_inicializar();
+    }
+    rede_inicializar();
+    
     /* Estado da janela principal */
     int win_w = (L * 64) / 100;
     if (win_w < 500) win_w = 500;
