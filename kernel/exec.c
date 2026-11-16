@@ -1,15 +1,20 @@
 /* ============================================================================
  * FydelisTech OS v4.2 — Motor Gráfico, Window Manager & Desktop Interativo
  * Arquitetura: x86_64 Freestanding | VESA Linear Framebuffer 32-bit + PS/2
+ * Integrado com: icones.h, fontes_ui.h, estrutura.asm e energia.asm
  * ============================================================================ */
 
 #include "gpu.h"
+#include "icones.h"
+#include "fontes_ui.h"
+#include "fydelis_core.h"
 #include <stdint.h>
 #include <stddef.h>
 
 /* Paleta Cyberpunk Purple & Neon — FydelisTech OS */
 #define COR_FUNDO_ESCURO    0xFF120826
 #define COR_PAINEL          0xFF1E0E3D
+#define COR_PAINEL_SEC      0xFF160A2E
 #define COR_CARD            0xFF281352
 #define COR_INPUT_BG        0xFF160A2E
 #define COR_HOVER           0xFF3B1D75
@@ -32,6 +37,35 @@ extern uint32_t  fb_pitch;
 extern uint64_t mouse_inicializar(void);
 extern uint64_t ws_inicializar(void);
 extern void     ws_atualizar_cursor(void);
+
+/* Modos de exibição da Janela Principal */
+enum {
+    MODO_JANELA_SISTEMA  = 1,
+    MODO_JANELA_EXPLORER = 2,
+    MODO_JANELA_APPS     = 3,
+    MODO_JANELA_CONFIG   = 4
+};
+
+/* Categorias e Itens do Menu Iniciar */
+typedef struct {
+    const char     *rotulo;
+    const uint32_t *icone;
+    int             coluna;   /* 0 = Aplicativos (Esquerda), 1 = Sistema (Direita) */
+    int             acao_id;
+} ItemMenuIniciar;
+
+static const ItemMenuIniciar itens_menu[] = {
+    /* Coluna 0: APLICATIVOS */
+    { "Explorer (/fyd)", icone_pasta_aberta,  0, 1 },
+    { "Aplicativos",     icone_iniciar,       0, 2 },
+    { "FydelTerm",       icone_terminal,      0, 3 },
+    { "Agenda",          icone_agenda,        0, 4 },
+    /* Coluna 1: SISTEMA & CONFIGURAÇÕES */
+    { "Painel Sistema",  icone_sistema,       1, 5 },
+    { "Configuracoes",   icone_config,        1, 6 },
+    { "Rede & Wi-Fi",    icone_ethernet,      1, 7 },
+};
+#define TOTAL_ITENS_MENU (int)(sizeof(itens_menu) / sizeof(itens_menu[0]))
 
 /* ============================================================================
  * FONTE BITMAP 8x16 COMPLETA (ASCII 32..126)
@@ -143,7 +177,6 @@ static inline uint8_t inb(uint16_t porta) {
     return val;
 }
 
-/* Lê posição (EDI, ESI) e máscara de botões (EAX) direto do mouse.asm */
 static void obter_estado_mouse(int *x, int *y, int *botoes) {
     uint32_t mx, my, mb;
     __asm__ volatile (
@@ -245,6 +278,81 @@ static void desenhar_caixa_com_borda(int x, int y, int w, int h, int espessura, 
     );
 }
 
+/* Renderiza ícones SVG rasterizados em ARGB8888 (icones.h) com Alpha Blending inteiro */
+static void gpu_desenhar_icone(const uint32_t *pixels, int x, int y, int w, int h) {
+    if (!pixels || !fb_base) return;
+    uint32_t pitch_bytes = fb_pitch ? fb_pitch : (fb_largura * 4);
+
+    for (int lin = 0; lin < h; lin++) {
+        int py = y + lin;
+        if (py < 0 || py >= (int)fb_altura) continue;
+        uint32_t *dst_linha = (uint32_t *)((uint8_t *)fb_base + (uint64_t)py * pitch_bytes);
+
+        for (int col = 0; col < w; col++) {
+            int px = x + col;
+            if (px < 0 || px >= (int)fb_largura) continue;
+
+            uint32_t src = pixels[lin * w + col];
+            uint32_t alpha = (src >> 24) & 0xFF;
+            if (alpha == 0) continue;
+            if (alpha == 255) {
+                dst_linha[px] = src;
+                continue;
+            }
+
+            uint32_t dst = dst_linha[px];
+            uint32_t inv = 255 - alpha;
+            uint32_t r = (((src >> 16) & 0xFF) * alpha + ((dst >> 16) & 0xFF) * inv) >> 8;
+            uint32_t g = (((src >> 8)  & 0xFF) * alpha + ((dst >> 8)  & 0xFF) * inv) >> 8;
+            uint32_t b = (( src        & 0xFF) * alpha + ( dst        & 0xFF) * inv) >> 8;
+            dst_linha[px] = 0xFF000000 | (r << 16) | (g << 8) | b;
+        }
+    }
+}
+
+/* Renderiza texto grande com anti-aliasing suave (fontes_ui.h) para títulos */
+static void gpu_escrever_titulo(const char *texto, int x, int y, uint32_t cor) {
+    if (!texto || !fb_base) return;
+    uint32_t pitch_bytes = fb_pitch ? fb_pitch : (fb_largura * 4);
+
+    uint32_t sr = (cor >> 16) & 0xFF;
+    uint32_t sg = (cor >> 8)  & 0xFF;
+    uint32_t sb =  cor        & 0xFF;
+
+    int cx = x;
+    while (*texto) {
+        unsigned char c = (unsigned char)(*texto++);
+        if (c < 32 || c > 126) c = '?';
+        const uint8_t *glifo = fonte_ui_alpha[c - 32];
+
+        for (int lin = 0; lin < FONTE_UI_H; lin++) {
+            int py = y + lin;
+            if (py < 0 || py >= (int)fb_altura) continue;
+            uint32_t *dst_linha = (uint32_t *)((uint8_t *)fb_base + (uint64_t)py * pitch_bytes);
+
+            for (int col = 0; col < FONTE_UI_W; col++) {
+                int px = cx + col;
+                if (px < 0 || px >= (int)fb_largura) continue;
+
+                uint32_t alpha = glifo[lin * FONTE_UI_W + col];
+                if (alpha == 0) continue;
+                if (alpha == 255) {
+                    dst_linha[px] = cor;
+                    continue;
+                }
+
+                uint32_t dst = dst_linha[px];
+                uint32_t inv = 255 - alpha;
+                uint32_t r = (sr * alpha + ((dst >> 16) & 0xFF) * inv) >> 8;
+                uint32_t g = (sg * alpha + ((dst >> 8)  & 0xFF) * inv) >> 8;
+                uint32_t b = (sb * alpha + ( dst        & 0xFF) * inv) >> 8;
+                dst_linha[px] = 0xFF000000 | (r << 16) | (g << 8) | b;
+            }
+        }
+        cx += FONTE_UI_W;
+    }
+}
+
 void gpu_escrever_texto(const char *texto, int x, int y, uint32_t cor) {
     if (!texto || !fb_base) return;
 
@@ -291,7 +399,7 @@ static void escrever_texto_centralizado(const char *texto, int centro_x, int y, 
 }
 
 /* ============================================================================
- * DRIVER DE TECLADO PS/2 PARA INTERFACE GRÁFICA (Ignora bytes do mouse!)
+ * DRIVER DE TECLADO PS/2 PARA INTERFACE GRÁFICA
  * ============================================================================ */
 static char ler_tecla_ps2(void) {
     static const char mapa_scancode[128] = {
@@ -302,18 +410,11 @@ static char ler_tecla_ps2(void) {
     };
 
     uint8_t status = inb(0x64);
-    if ((status & 0x01) == 0) {
-        return 0;
-    }
-    /* Bit 5 = 1 significa byte do mouse auxiliar; não rouba do teclado */
-    if (status & 0x20) {
-        return 0;
-    }
+    if ((status & 0x01) == 0) return 0;
+    if (status & 0x20) return 0;
 
     uint8_t sc = inb(0x60);
-    if (sc & 0x80) {
-        return 0;
-    }
+    if (sc & 0x80) return 0;
     if (sc < sizeof(mapa_scancode)) {
         return mapa_scancode[sc];
     }
@@ -503,7 +604,91 @@ static void exibir_tela_login(int L, int A) {
 }
 
 /* ============================================================================
- * TELA 3: ÁREA DE TRABALHO GRÁFICA (Barra de Tarefas + Menu Iniciar + Drag)
+ * MENU INICIAR ORGANIZADO POR CATEGORIA (APLICATIVOS | SISTEMA & CONFIG)
+ * ============================================================================ */
+static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_w, int menu_h, int mx, int my) {
+    int cab_h     = 36;
+    int rodape_h  = 40;
+    int col_esq_w = 215;
+    int col_dir_w = menu_w - col_esq_w;
+    int corpo_y   = menu_y + cab_h;
+    int corpo_h   = menu_h - cab_h - rodape_h;
+
+    /* Moldura e divisao de colunas */
+    desenhar_caixa_com_borda(menu_x, menu_y, menu_w, menu_h, 2, COR_CIANO_NEON, COR_PAINEL);
+    desenhar_retangulo_solido(menu_x + col_esq_w, corpo_y, col_dir_w - 2, corpo_h, COR_PAINEL_SEC);
+    desenhar_retangulo_solido(menu_x + col_esq_w, corpo_y, 1, corpo_h, COR_BORDA_SUTIL);
+
+    /* Cabecalho com o emblema "F" */
+    desenhar_retangulo_solido(menu_x + 2, menu_y + 2, menu_w - 4, cab_h - 2, COR_CARD);
+    gpu_desenhar_icone(icone_fydelis_f, menu_x + 10, menu_y + 8, ICONE_TAM, ICONE_TAM);
+    gpu_escrever_texto("FYDELISTECH OS v4.2", menu_x + 38, menu_y + 10, COR_CIANO_NEON);
+    gpu_escrever_texto("admin@fydelis", menu_x + menu_w - 116, menu_y + 10, COR_VERDE_NEON);
+
+    /* Titulos das Categorias */
+    gpu_escrever_texto("APLICATIVOS", menu_x + 14, corpo_y + 8, COR_ROXO_CLARO);
+    gpu_escrever_texto("SISTEMA & CONFIG", menu_x + col_esq_w + 12, corpo_y + 8, COR_ROXO_CLARO);
+
+    int idx_esq = 0;
+    int idx_dir = 0;
+    for (int i = 0; i < TOTAL_ITENS_MENU; i++) {
+        int ix, iy, iw;
+        int ih = 32;
+
+        if (itens_menu[i].coluna == 0) {
+            ix = menu_x + 10;
+            iy = corpo_y + 28 + (idx_esq * 36);
+            iw = col_esq_w - 20;
+            idx_esq++;
+        } else {
+            ix = menu_x + col_esq_w + 10;
+            iy = corpo_y + 28 + (idx_dir * 36);
+            iw = col_dir_w - 20;
+            idx_dir++;
+        }
+
+        int hover = ponto_no_retangulo(mx, my, ix, iy, iw, ih);
+        if (hover) {
+            desenhar_caixa_com_borda(ix, iy, iw, ih, 1, COR_CIANO_NEON, COR_HOVER);
+        }
+
+        gpu_desenhar_icone(itens_menu[i].icone, ix + 6, iy + 6, ICONE_TAM, ICONE_TAM);
+        gpu_escrever_texto(itens_menu[i].rotulo, ix + 32, iy + 8,
+                           hover ? COR_CIANO_NEON : COR_TEXTO_BRANCO);
+    }
+
+    /* Rodape de Sessao e Energia (Travar | Reiniciar | Desligar) */
+    int rod_y = menu_y + menu_h - rodape_h;
+    desenhar_retangulo_solido(menu_x + 2, rod_y, menu_w - 4, 1, COR_BORDA_SUTIL);
+
+    int btn_w = (menu_w - 28) / 3;
+    int btn_h = 28;
+    int btn_y = rod_y + 6;
+
+    /* Botao 1: Travar Sessao */
+    int bx1 = menu_x + 8;
+    int h1  = ponto_no_retangulo(mx, my, bx1, btn_y, btn_w, btn_h);
+    desenhar_caixa_com_borda(bx1, btn_y, btn_w, btn_h, 1, COR_ROXO_NEON, h1 ? COR_HOVER : COR_CARD);
+    gpu_desenhar_icone(icone_bloquear, bx1 + 6, btn_y + 4, ICONE_TAM, ICONE_TAM);
+    gpu_escrever_texto("Travar", bx1 + 30, btn_y + 6, COR_TEXTO_BRANCO);
+
+    /* Botao 2: Reiniciar (energia.asm) */
+    int bx2 = bx1 + btn_w + 6;
+    int h2  = ponto_no_retangulo(mx, my, bx2, btn_y, btn_w, btn_h);
+    desenhar_caixa_com_borda(bx2, btn_y, btn_w, btn_h, 1, COR_CIANO_NEON, h2 ? COR_HOVER : COR_CARD);
+    gpu_desenhar_icone(icone_relogio, bx2 + 6, btn_y + 4, ICONE_TAM, ICONE_TAM);
+    gpu_escrever_texto("Reiniciar", bx2 + 30, btn_y + 6, COR_CIANO_NEON);
+
+    /* Botao 3: Desligar (energia.asm) */
+    int bx3 = bx2 + btn_w + 6;
+    int h3  = ponto_no_retangulo(mx, my, bx3, btn_y, btn_w, btn_h);
+    desenhar_caixa_com_borda(bx3, btn_y, btn_w, btn_h, 1, COR_VERMELHO_ALERTA, h3 ? 0xFF5A1830 : COR_CARD);
+    gpu_desenhar_icone(icone_desligar, bx3 + 6, btn_y + 4, ICONE_TAM, ICONE_TAM);
+    gpu_escrever_texto("Desligar", bx3 + 30, btn_y + 6, COR_VERMELHO_ALERTA);
+}
+
+/* ============================================================================
+ * TELA 3: ÁREA DE TRABALHO GRÁFICA (Botão F + Menu Categorizado + Janelas)
  * Retorno: 0 = voltar para FydelTerm | 1 = bloquear sessão (voltar ao Login)
  * ============================================================================ */
 static int exibir_desktop_grafico(int L, int A) {
@@ -511,34 +696,36 @@ static int exibir_desktop_grafico(int L, int A) {
     char tmp[16];
 
     /* Estado da janela principal */
-    int win_w = (L * 62) / 100;
-    if (win_w < 460) win_w = 460;
-    int win_h = (A * 52) / 100;
-    if (win_h < 260) win_h = 260;
+    int win_w = (L * 64) / 100;
+    if (win_w < 500) win_w = 500;
+    int win_h = (A * 56) / 100;
+    if (win_h < 300) win_h = 300;
     int win_x = (L - win_w) / 2;
     int win_y = (A - win_h) / 2 - 20;
 
     int janela_aberta  = 1;
+    int modo_janela    = MODO_JANELA_SISTEMA;
     int arrastando     = 0;
     int drag_offset_x  = 0;
     int drag_offset_y  = 0;
 
-    /* Estado da Barra de Tarefas & Menu Iniciar */
+    /* Estado da Barra de Tarefas & Botao "F" */
     int taskbar_h      = 38;
     int taskbar_y      = A - taskbar_h;
-    int btn_iniciar_x  = 8;
-    int btn_iniciar_y  = taskbar_y + 4;
-    int btn_iniciar_w  = 116;
-    int btn_iniciar_h  = 30;
+    int btn_f_x        = 8;
+    int btn_f_y        = taskbar_y + 3;
+    int btn_f_w        = 42;
+    int btn_f_h        = 32;
 
     int menu_aberto    = 0;
     int menu_x         = 8;
-    int menu_w         = 240;
-    int menu_h         = 146;
+    int menu_w         = 410;
+    int menu_h         = 264;
     int menu_y         = taskbar_y - menu_h - 4;
 
     int precisa_redesenhar = 1;
     int btn_ant        = 0;
+    int hover_ant      = -1;
 
     /* Monta string de resolução uma única vez */
     str_copy(res_buf, "Video VESA    : ", sizeof(res_buf));
@@ -554,113 +741,175 @@ static int exibir_desktop_grafico(int L, int A) {
     str_copy(res_buf + pos, " @ 32-bit", sizeof(res_buf) - pos);
 
     while (1) {
+        int mx, my, mb;
+        obter_estado_mouse(&mx, &my, &mb);
+
+        /* Detecta mudanca de hover no Menu Iniciar para destacar itens suavemente */
+        int hover_atual = -1;
+        if (menu_aberto && ponto_no_retangulo(mx, my, menu_x, menu_y, menu_w, menu_h)) {
+            hover_atual = (my - menu_y) / 16;
+        }
+        if (hover_atual != hover_ant) {
+            hover_ant = hover_atual;
+            precisa_redesenhar = 1;
+        }
+
         if (precisa_redesenhar) {
-            /* Reseta cache do sprite do cursor antes de redesenhar a cena limpa */
             ws_inicializar();
 
             /* 1. Fundo do Desktop */
             desenhar_retangulo_solido(0, 0, L, A, COR_FUNDO_ESCURO);
 
-            /* 2. Painel Superior */
+            /* 2. Painel Superior com ícone Ethernet em Ciano Neon */
             desenhar_retangulo_solido(0, 0, L, 32, COR_PAINEL);
             desenhar_retangulo_solido(0, 32, L, 2, COR_ROXO_NEON);
-            gpu_escrever_texto("FYDELISTECH OS v4.2", 16, 8, COR_CIANO_NEON);
-            gpu_escrever_texto("Sessao: admin@fydelis", L - 190, 8, COR_VERDE_NEON);
+            gpu_escrever_titulo("FYDELISTECH OS", 14, 4, COR_CIANO_NEON);
+            gpu_desenhar_icone(icone_ethernet, L - 224, 6, ICONE_TAM, ICONE_TAM);
+            gpu_escrever_texto("Sessao: admin@fydelis", L - 196, 8, COR_VERDE_NEON);
 
-            /* 3. Janela Arrastável (se estiver aberta) */
+            /* 3. Atalhos Rapidos na Area de Trabalho */
+            gpu_desenhar_icone(icone_pasta_fechada, 22, 54, ICONE_TAM, ICONE_TAM);
+            gpu_escrever_texto("Explorer", 48, 56, COR_TEXTO_BRANCO);
+
+            gpu_desenhar_icone(icone_iniciar, 22, 88, ICONE_TAM, ICONE_TAM);
+            gpu_escrever_texto("Aplicativos", 48, 90, COR_CIANO_NEON);
+
+            gpu_desenhar_icone(icone_config, 22, 122, ICONE_TAM, ICONE_TAM);
+            gpu_escrever_texto("Configuracoes", 48, 124, COR_TEXTO_SUAVE);
+
+            /* 4. Janela Arrastável Dinâmica */
             if (janela_aberta) {
                 desenhar_caixa_com_borda(win_x, win_y, win_w, win_h, 2,
                     arrastando ? COR_CIANO_NEON : COR_ROXO_NEON, COR_CARD);
 
-                /* Barra de título (área de arraste) */
                 desenhar_retangulo_solido(win_x + 2, win_y + 2, win_w - 4, 30, COR_PAINEL);
-                gpu_escrever_texto("FydelisDesktop - Painel do Sistema", win_x + 12, win_y + 9, COR_TEXTO_BRANCO);
 
-                /* Botão Fechar [X] no canto direito da barra de título */
+                const uint32_t *icone_win = icone_sistema;
+                const char *titulo_win    = "Painel do Sistema";
+                if (modo_janela == MODO_JANELA_EXPLORER) {
+                    icone_win  = icone_pasta_aberta;
+                    titulo_win = "FydelisExplorer - Arvore /fyd";
+                } else if (modo_janela == MODO_JANELA_APPS) {
+                    icone_win  = icone_iniciar;
+                    titulo_win = "Central de Aplicativos";
+                } else if (modo_janela == MODO_JANELA_CONFIG) {
+                    icone_win  = icone_config;
+                    titulo_win = "Configuracoes do Sistema";
+                }
+
+                gpu_desenhar_icone(icone_win, win_x + 10, win_y + 7, ICONE_TAM, ICONE_TAM);
+                gpu_escrever_texto(titulo_win, win_x + 36, win_y + 9, COR_TEXTO_BRANCO);
+
+                /* Botão Fechar [X] */
                 int close_x = win_x + win_w - 28;
                 int close_y = win_y + 6;
                 desenhar_retangulo_solido(close_x, close_y, 22, 22, COR_VERMELHO_ALERTA);
                 gpu_escrever_texto("X", close_x + 7, close_y + 3, COR_TEXTO_BRANCO);
 
-                /* Conteúdo da Janela */
                 int cx = win_x + 22;
-                int cy = win_y + 48;
-                gpu_escrever_texto("Bem-vindo ao FydelisTech OS (64-bit Long Mode)!", cx, cy, COR_CIANO_NEON);
-                cy += 26;
-                gpu_escrever_texto("Arquitetura   : x86_64 Assembly + C Freestanding", cx, cy, COR_TEXTO_SUAVE);
-                cy += 22;
-                gpu_escrever_texto(res_buf, cx, cy, COR_TEXTO_SUAVE);
-                cy += 22;
-                gpu_escrever_texto("Mouse PS/2    : Ativo (Arraste a barra acima!)", cx, cy, COR_VERDE_NEON);
-                cy += 34;
+                int cy = win_y + 46;
 
-                desenhar_caixa_com_borda(cx, cy, win_w - 44, 42, 1, COR_BORDA_SUTIL, COR_INPUT_BG);
-                gpu_escrever_texto("Use o botao [Iniciar] abaixo ou [ESC] para sair.", cx + 12, cy + 13, COR_ROXO_CLARO);
+                if (modo_janela == MODO_JANELA_SISTEMA) {
+                    gpu_escrever_texto("Bem-vindo ao FydelisTech OS (64-bit Long Mode)!", cx, cy, COR_CIANO_NEON);
+                    cy += 26;
+                    gpu_escrever_texto("Arquitetura   : x86_64 Assembly + C Freestanding", cx, cy, COR_TEXTO_SUAVE);
+                    cy += 22;
+                    gpu_escrever_texto(res_buf, cx, cy, COR_TEXTO_SUAVE);
+                    cy += 22;
+                    gpu_escrever_texto("Diretorio CWD : ", cx, cy, COR_TEXTO_SUAVE);
+                    gpu_escrever_texto(diretorio_atual, cx + 128, cy, COR_VERDE_NEON);
+                    cy += 34;
+                    desenhar_caixa_com_borda(cx, cy, win_w - 44, 42, 1, COR_BORDA_SUTIL, COR_INPUT_BG);
+                    gpu_escrever_texto("Clique no botao [F] abaixo para abrir Explorer, Apps ou Config.", cx + 12, cy + 13, COR_ROXO_CLARO);
+                } else if (modo_janela == MODO_JANELA_EXPLORER) {
+                    gpu_escrever_texto("Diretorios montados no boot (estrutura.asm):", cx, cy, COR_CIANO_NEON);
+                    cy += 24;
+                    const char **pastas = fs_obter_lista_pastas();
+                    uint64_t total = fs_total_pastas();
+                    int max_linhas = (win_h - 90) / 22;
+                    if ((int)total < max_linhas) max_linhas = (int)total;
+
+                    for (int i = 0; i < max_linhas; i++) {
+                        gpu_desenhar_icone(icone_pasta_fechada, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                        gpu_escrever_texto(pastas[i], cx + 26, cy, COR_TEXTO_BRANCO);
+                        cy += 22;
+                    }
+                } else if (modo_janela == MODO_JANELA_APPS) {
+                    gpu_escrever_texto("Aplicativos instalados em /fyd/apps:", cx, cy, COR_CIANO_NEON);
+                    cy += 28;
+                    gpu_desenhar_icone(icone_terminal, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto("FydelTerm Shell (CLI Nativo)", cx + 28, cy, COR_VERDE_NEON);
+                    cy += 28;
+                    gpu_desenhar_icone(icone_agenda, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto("Agenda & Calendario do Sistema", cx + 28, cy, COR_TEXTO_BRANCO);
+                    cy += 28;
+                    gpu_desenhar_icone(icone_video, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto("FydelisMedia Player (/fyd/midia)", cx + 28, cy, COR_TEXTO_BRANCO);
+                    cy += 28;
+                    gpu_desenhar_icone(icone_imagem, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto("Visualizador de Imagens (/fyd/usuario/imagens)", cx + 28, cy, COR_TEXTO_BRANCO);
+                } else if (modo_janela == MODO_JANELA_CONFIG) {
+                    gpu_escrever_texto("Configuracoes de Hardware & Tema (/fyd/config):", cx, cy, COR_CIANO_NEON);
+                    cy += 28;
+                    gpu_desenhar_icone(icone_ethernet, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto("Rede Ethernet / Bridge: Ativo (/fyd/rede)", cx + 28, cy, COR_VERDE_NEON);
+                    cy += 28;
+                    gpu_desenhar_icone(icone_wifi, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto("Controlador Wi-Fi & Bluetooth: Pronto", cx + 28, cy, COR_TEXTO_BRANCO);
+                    cy += 28;
+                    gpu_desenhar_icone(icone_sistema, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto("Tema Ativo: Cyberpunk Neon (/fyd/temas)", cx + 28, cy, COR_ROXO_CLARO);
+                }
             }
 
-            /* 4. Barra de Tarefas Inferior */
+            /* 5. Barra de Tarefas Inferior */
             desenhar_retangulo_solido(0, taskbar_y, L, taskbar_h, COR_PAINEL);
             desenhar_retangulo_solido(0, taskbar_y, L, 2, COR_CIANO_NEON);
 
-            /* Botão [ Iniciar ] */
-            uint32_t cor_btn_iniciar = menu_aberto ? COR_CIANO_NEON : COR_ROXO_NEON;
-            uint32_t cor_txt_iniciar = menu_aberto ? COR_FUNDO_ESCURO : COR_TEXTO_BRANCO;
-            desenhar_retangulo_solido(btn_iniciar_x, btn_iniciar_y, btn_iniciar_w, btn_iniciar_h, cor_btn_iniciar);
-            gpu_escrever_texto("[ Iniciar ]", btn_iniciar_x + 14, btn_iniciar_y + 7, cor_txt_iniciar);
+            /* Botão Compacto com o Logotipo "F" (substitui [ Iniciar ]) */
+            desenhar_caixa_com_borda(btn_f_x, btn_f_y, btn_f_w, btn_f_h, 1,
+                menu_aberto ? COR_CIANO_NEON : COR_ROXO_NEON,
+                menu_aberto ? COR_HOVER : COR_CARD);
+            gpu_desenhar_icone(icone_fydelis_f, btn_f_x + 11, btn_f_y + 6, ICONE_TAM, ICONE_TAM);
 
             /* Aba da janela ativa na Barra de Tarefas */
-            int tab_x = btn_iniciar_x + btn_iniciar_w + 12;
-            desenhar_caixa_com_borda(tab_x, btn_iniciar_y, 185, btn_iniciar_h, 1,
+            int tab_x = btn_f_x + btn_f_w + 10;
+            desenhar_caixa_com_borda(tab_x, btn_f_y + 1, 195, 30, 1,
                 janela_aberta ? COR_CIANO_NEON : COR_BORDA_SUTIL,
                 janela_aberta ? COR_HOVER : COR_INPUT_BG);
-            gpu_escrever_texto("Painel do Sistema", tab_x + 22, btn_iniciar_y + 7, COR_TEXTO_BRANCO);
+            const char *rotulo_aba = "Painel do Sistema";
+            if (modo_janela == MODO_JANELA_EXPLORER) rotulo_aba = "Explorer (/fyd)";
+            else if (modo_janela == MODO_JANELA_APPS) rotulo_aba = "Aplicativos";
+            else if (modo_janela == MODO_JANELA_CONFIG) rotulo_aba = "Configuracoes";
+            gpu_escrever_texto(rotulo_aba, tab_x + 16, btn_f_y + 8, COR_TEXTO_BRANCO);
 
             /* Atalho rápido FydelTerm à direita da Barra de Tarefas */
-            int term_btn_w = 132;
+            int term_btn_w = 142;
             int term_btn_x = L - term_btn_w - 12;
-            desenhar_caixa_com_borda(term_btn_x, btn_iniciar_y, term_btn_w, btn_iniciar_h, 1, COR_ROXO_NEON, COR_CARD);
-            gpu_escrever_texto(">_ FydelTerm", term_btn_x + 18, btn_iniciar_y + 7, COR_VERDE_NEON);
+            desenhar_caixa_com_borda(term_btn_x, btn_f_y + 1, term_btn_w, 30, 1, COR_ROXO_NEON, COR_CARD);
+            gpu_desenhar_icone(icone_terminal, term_btn_x + 8, btn_f_y + 6, ICONE_TAM, ICONE_TAM);
+            gpu_escrever_texto("FydelTerm", term_btn_x + 34, btn_f_y + 8, COR_VERDE_NEON);
 
-            /* 5. Popup do Menu Iniciar (desenhado por cima de tudo) */
+            /* 6. Menu Iniciar Categorizado (desenhado por cima de tudo) */
             if (menu_aberto) {
-                desenhar_caixa_com_borda(menu_x, menu_y, menu_w, menu_h, 2, COR_CIANO_NEON, COR_PAINEL);
-
-                /* Cabeçalho do Menu */
-                desenhar_retangulo_solido(menu_x + 2, menu_y + 2, menu_w - 4, 28, COR_CARD);
-                gpu_escrever_texto("FYDELIS MENU", menu_x + 14, menu_y + 8, COR_CIANO_NEON);
-
-                /* Item 1: Painel do Sistema */
-                gpu_escrever_texto("[1] Painel do Sistema", menu_x + 14, menu_y + 42, COR_TEXTO_BRANCO);
-                desenhar_retangulo_solido(menu_x + 10, menu_y + 66, menu_w - 20, 1, COR_BORDA_SUTIL);
-
-                /* Item 2: Terminal FydelTerm */
-                gpu_escrever_texto("[2] Terminal FydelTerm", menu_x + 14, menu_y + 76, COR_VERDE_NEON);
-                desenhar_retangulo_solido(menu_x + 10, menu_y + 100, menu_w - 20, 1, COR_BORDA_SUTIL);
-
-                /* Item 3: Bloquear Sessao */
-                gpu_escrever_texto("[3] Bloquear Sessao", menu_x + 14, menu_y + 112, COR_VERMELHO_ALERTA);
+                desenhar_menu_iniciar_categorizado(menu_x, menu_y, menu_w, menu_h, mx, my);
             }
 
             precisa_redesenhar = 0;
         }
 
-        /* Atualiza posição e desenho do ponteiro do mouse */
         ws_atualizar_cursor();
-
-        int mx, my, mb;
-        obter_estado_mouse(&mx, &my, &mb);
 
         int botao_esq_pressionado = (mb & 0x01) != 0;
         int clique_agora = botao_esq_pressionado && !(btn_ant & 0x01);
         btn_ant = mb;
 
-        /* Lógica de arraste contínuo da janela */
+        /* Arraste contínuo da janela */
         if (arrastando) {
             if (botao_esq_pressionado) {
                 int novo_x = mx - drag_offset_x;
                 int novo_y = my - drag_offset_y;
 
-                /* Mantém janela dentro da área útil da tela */
                 if (novo_x < 0) novo_x = 0;
                 if (novo_x + win_w > L) novo_x = L - win_w;
                 if (novo_y < 34) novo_y = 34;
@@ -677,51 +926,95 @@ static int exibir_desktop_grafico(int L, int A) {
             }
         }
 
-        /* Tratamento de clique esquerdo */
+        /* Tratamento de cliques */
         if (clique_agora) {
-            /* 1. Clicou no botão [ Iniciar ] */
-            if (ponto_no_retangulo(mx, my, btn_iniciar_x, btn_iniciar_y, btn_iniciar_w, btn_iniciar_h)) {
+            /* 1. Botão "F" (Iniciar) */
+            if (ponto_no_retangulo(mx, my, btn_f_x, btn_f_y, btn_f_w, btn_f_h)) {
                 menu_aberto = !menu_aberto;
                 precisa_redesenhar = 1;
             }
-            /* 2. Clicou dentro do Menu Iniciar aberto */
+            /* 2. Cliques dentro do Menu Iniciar Categorizado */
             else if (menu_aberto && ponto_no_retangulo(mx, my, menu_x, menu_y, menu_w, menu_h)) {
-                if (my < menu_y + 66) {
-                    /* Item 1: Abrir/Restaurar Painel */
-                    janela_aberta = 1;
-                    menu_aberto = 0;
-                    precisa_redesenhar = 1;
-                } else if (my < menu_y + 100) {
-                    /* Item 2: Voltar ao Terminal FydelTerm */
-                    return 0;
+                int rod_y = menu_y + menu_h - 40;
+                int btn_w = (menu_w - 28) / 3;
+                int btn_y = rod_y + 6;
+
+                if (ponto_no_retangulo(mx, my, menu_x + 8, btn_y, btn_w, 28)) {
+                    return 1; /* Travar Sessão -> Login */
+                } else if (ponto_no_retangulo(mx, my, menu_x + 14 + btn_w, btn_y, btn_w, 28)) {
+                    energia_reiniciar_agora();
+                } else if (ponto_no_retangulo(mx, my, menu_x + 20 + (btn_w * 2), btn_y, btn_w, 28)) {
+                    energia_desligar_agora();
                 } else {
-                    /* Item 3: Bloquear Sessão (volta ao Login) */
-                    return 1;
+                    int cab_h = 36, col_esq_w = 215, col_dir_w = menu_w - col_esq_w;
+                    int corpo_y = menu_y + cab_h;
+                    int idx_e = 0, idx_d = 0;
+
+                    for (int i = 0; i < TOTAL_ITENS_MENU; i++) {
+                        int ix = (itens_menu[i].coluna == 0) ? (menu_x + 10) : (menu_x + col_esq_w + 10);
+                        int iy = corpo_y + 28 + ((itens_menu[i].coluna == 0 ? idx_e++ : idx_d++) * 36);
+                        int iw = (itens_menu[i].coluna == 0) ? (col_esq_w - 20) : (col_dir_w - 20);
+
+                        if (ponto_no_retangulo(mx, my, ix, iy, iw, 32)) {
+                            int acao = itens_menu[i].acao_id;
+                            if (acao == 1)      { modo_janela = MODO_JANELA_SISTEMA;  janela_aberta = 1; }
+                            else if (acao == 2) { modo_janela = MODO_JANELA_APPS;     janela_aberta = 1; }
+                            else if (acao == 3) { return 0; /* FydelTerm */ }
+                            else if (acao == 4) { modo_janela = MODO_JANELA_APPS;     janela_aberta = 1; }
+                            else if (acao == 5) { modo_janela = MODO_JANELA_SISTEMA;  janela_aberta = 1; }
+                            else if (acao == 6) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
+                            else if (acao == 7) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
+
+                            /* Ajuste direto: item 1 = Explorer, item 2 = Aplicativos */
+                            if (i == 0) modo_janela = MODO_JANELA_EXPLORER;
+                            if (i == 1) modo_janela = MODO_JANELA_APPS;
+
+                            menu_aberto = 0;
+                            precisa_redesenhar = 1;
+                            break;
+                        }
+                    }
                 }
             }
-            /* 3. Clicou na aba "Painel do Sistema" na Barra de Tarefas */
-            else if (ponto_no_retangulo(mx, my, btn_iniciar_x + btn_iniciar_w + 12, btn_iniciar_y, 185, btn_iniciar_h)) {
+            /* 3. Aba da janela na Barra de Tarefas */
+            else if (ponto_no_retangulo(mx, my, btn_f_x + btn_f_w + 10, btn_f_y + 1, 195, 30)) {
                 janela_aberta = !janela_aberta;
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            /* 4. Clicou no atalho ">_ FydelTerm" na Barra de Tarefas */
-            else if (ponto_no_retangulo(mx, my, L - 144, btn_iniciar_y, 132, btn_iniciar_h)) {
+            /* 4. Atalho FydelTerm à direita da Barra de Tarefas */
+            else if (ponto_no_retangulo(mx, my, L - 154, btn_f_y + 1, 142, 30)) {
                 return 0;
             }
-            /* 5. Interação com a janela aberta */
+            /* 5. Atalhos do Desktop */
+            else if (ponto_no_retangulo(mx, my, 22, 54, 110, 22)) {
+                modo_janela = MODO_JANELA_EXPLORER;
+                janela_aberta = 1;
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
+            }
+            else if (ponto_no_retangulo(mx, my, 22, 88, 125, 22)) {
+                modo_janela = MODO_JANELA_APPS;
+                janela_aberta = 1;
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
+            }
+            else if (ponto_no_retangulo(mx, my, 22, 122, 140, 22)) {
+                modo_janela = MODO_JANELA_CONFIG;
+                janela_aberta = 1;
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
+            }
+            /* 6. Interação com a janela aberta */
             else if (janela_aberta) {
                 int close_x = win_x + win_w - 28;
                 int close_y = win_y + 6;
 
-                /* Botão fechar [X] */
                 if (ponto_no_retangulo(mx, my, close_x, close_y, 22, 22)) {
                     janela_aberta = 0;
                     menu_aberto = 0;
                     precisa_redesenhar = 1;
-                }
-                /* Barra de título -> inicia arraste */
-                else if (ponto_no_retangulo(mx, my, win_x, win_y, win_w, 32)) {
+                } else if (ponto_no_retangulo(mx, my, win_x, win_y, win_w, 32)) {
                     arrastando = 1;
                     drag_offset_x = mx - win_x;
                     drag_offset_y = my - win_y;
@@ -737,9 +1030,8 @@ static int exibir_desktop_grafico(int L, int A) {
             }
         }
 
-        /* Atalhos de teclado no Desktop */
         char tecla = ler_tecla_ps2();
-        if (tecla == 27) { /* ESC retorna ao FydelTerm */
+        if (tecla == 27) {
             return 0;
         }
 
@@ -771,7 +1063,6 @@ int kernel_exec_bin(void) {
         if (acao == 0) {
             break; /* Sai para o FydelTerm */
         }
-        /* Se acao == 1 (Bloquear Sessao), volta ao loop da tela de login */
     }
 
     return 0;
