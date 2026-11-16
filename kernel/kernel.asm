@@ -7,6 +7,7 @@ DEFAULT REL
 %include "fydelterm.inc"
 
 extern kernel_exec_bin
+extern construir_estrutura_sistema
 extern pmm_inicializar
 extern mem_detect_e820
 extern mem_total, mem_livre
@@ -338,11 +339,17 @@ start:
     lea     rsi, [msg_gb_sufixo]
     call    print_string
 
-    jmp     .menu
+    jmp     .montar_estrutura
 
 .sem_disco:
     lea     rsi, [msg_sem_disco]
     call    print_string
+
+.montar_estrutura:
+    ; ======================================
+    ; FASE 4 — ESTRUTURA DE DIRETÓRIOS (/fyd)
+    ; ======================================
+    call    construir_estrutura_sistema
 
 .menu:
     ; ======================================
