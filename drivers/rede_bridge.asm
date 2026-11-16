@@ -143,37 +143,48 @@ nic_write_reg:                  ; rdi=offset, esi=valor
     ret
 
 ; ==========================================
-; INICIALIZAÇÃO REAL DA NIC
+; INICIALIZAÇÃO REAL DA NIC (CORRIGIDA)
 ; ==========================================
 inicializar_nic_mmio:
+    push    rbx
     push    rcx
     push    rdx
+    push    r12
 
-    xor     rcx, rcx
+    xor     ebx, ebx                ; rbx = indice do dispositivo PCI (0..255)
 .busca:
+    mov     rcx, rbx                ; passa indice em rcx (se pci_ler_dispositivo usar rcx)
+    mov     rdi, rbx                ; e tambem em rdi (caso use System V ABI)
     call    pci_ler_dispositivo
-    cmp     rax, 0xFFFFFFFF
+    cmp     eax, 0xFFFFFFFF
     je      .prox
+
+    mov     rcx, rbx
+    mov     rdi, rbx
     call    pci_ler_classe
+    and     eax, 0xFFFF0000         ; Verifica Classe 0x02 (Network) + Subclasse 0x00 (Ethernet)
     cmp     eax, 0x02000000
     je      .achou
 .prox:
-    inc     rcx
-    cmp     rcx, 256
+    inc     ebx
+    cmp     ebx, 256
     jl      .busca
     xor     eax, eax
     jmp     .fim
 
 .achou:
+    mov     rcx, rbx
+    mov     rdi, rbx
     call    pci_ler_bar0
     and     rax, 0xFFFFFFF0
     mov     [rel nic_mmio_base], rax
-    test    rax, rax
+    mov     r12, rax                ; r12 guarda o ponteiro base MMIO sem ser sobrescrito
+    test    r12, r12
     jz      .fim
 
-    ; Reset
+    ; Reset da E1000
     mov     rdi, E1000_CTRL
-    mov     esi, 0x04000000                 ; RST
+    mov     esi, 0x04000000         ; Bit 26 = RST
     call    nic_write_reg
     mov     rcx, 1000000
 .wr:
@@ -185,13 +196,20 @@ inicializar_nic_mmio:
     jnz     .wr
 .rst_ok:
 
-    ; MAC da EEPROM
-    mov     rax, [rel nic_mmio_base]
-    mov     ax, [rax + 0x5400]
+    ; Configura Link Up (SLU = bit 6) no CTRL
+    mov     rdi, E1000_CTRL
+    call    nic_read_reg
+    or      eax, (1 << 6)
+    mov     esi, eax
+    mov     rdi, E1000_CTRL
+    call    nic_write_reg
+
+    ; Leitura segura do MAC (usando r12 como base, sem destruir o ponteiro)
+    mov     ax, [r12 + 0x5400]
     mov     [rel mac_addr], ax
-    mov     ax, [rax + 0x5402]
+    mov     ax, [r12 + 0x5402]
     mov     [rel mac_addr + 2], ax
-    mov     ax, [rax + 0x5404]
+    mov     ax, [r12 + 0x5404]
     mov     [rel mac_addr + 4], ax
 
     ; RX ring
@@ -209,7 +227,7 @@ inicializar_nic_mmio:
     xor     esi, esi
     call    nic_write_reg
 
-    ; buffers de RX nos descritores
+    ; Buffers de RX nos descritores
     xor     rcx, rcx
 .fillrx:
     mov     rax, rcx
@@ -250,8 +268,10 @@ inicializar_nic_mmio:
     mov     qword [rel nic_ok], 1
     mov     eax, 1
 .fim:
+    pop     r12
     pop     rdx
     pop     rcx
+    pop     rbx
     ret
 
 ; ==========================================
