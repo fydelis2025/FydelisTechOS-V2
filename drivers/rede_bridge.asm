@@ -24,6 +24,9 @@ global rede_ler_tabela_arp
 global rede_ler_conexoes
 global rede_exec_traceroute
 
+global rede_exec_traceroute
+global inicializar_nic_mmio
+
 extern pci_ler_bar0
 extern pci_ler_dispositivo
 extern pci_ler_classe
