@@ -50,7 +50,7 @@ CFLAGS    = -m64 \
             -MMD -MP
 
 PYTHON    = python3
-ROOT_DIR  = ../..
+ROOT_DIR  = ..
 TOOLS_DIR = $(ROOT_DIR)/tools
 ASSETS_DIR= $(ROOT_DIR)/assets
 INC_DIR   = ../include
