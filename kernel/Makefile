@@ -155,8 +155,8 @@ OBJS = \
 # ==========================================
 # 🎯 ALVO PRINCIPAL
 # ==========================================
-all: assets fydelterm.img $(BUILD_DIR)/fyd_boot.cfg
-	@echo "Build do kernel e configuração concluído com sucesso!"
+all: assets fydelterm.img iso $(BUILD_DIR)/fyd_boot.cfg
+	@echo "Build do kernel, ISO e configuração concluído com sucesso!"
 
 $(BUILD_DIR)/fyd_boot.cfg: ../boot/fyd_boot.cfg
 	@mkdir -p $(BUILD_DIR)
