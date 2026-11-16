@@ -1,26 +1,51 @@
 ; ==========================================
 ; ENERGIA — Desligar / Reiniciar / Sair
-; Compatível com o que já existe no commands.asm
+; FydelisTech OS v4.2 — Texto & GUI
 ; ==========================================
+BITS 64
+default rel
 
-; Mensagens (adicione na seção .data)
-msg_bye:         db "👋 Saindo do FydelTerm...",0
-msg_reboot_ok:   db "🔄 Reiniciando...",0
-msg_power_off:   db "🔌 Desligando sistema...",0
-msg_confirmar:   db "⚠️  Confirma? (s/N): ",0
-msg_cancel:      db "❌ Cancelado.",0
+global do_reboot
+global do_poweroff
+global do_exit
+global energia_reiniciar_agora
+global energia_desligar_agora
 
-; Comandos que você JÁ tem — mantém:
-str_exit:       db 'sair',0
-str_reboot:     db 'reiniciar',0
-str_poweroff:   db 'desligar',0   ; ← novo comando
+extern print_string
+extern print_newline
+extern print_success
+extern ler_tecla
 
-ajuda_exit:     db 'sair - Encerra sessão do terminal',0
-ajuda_reboot:   db 'reiniciar - Reinicia o sistema',0
-ajuda_poweroff: db 'desligar - Desliga o sistema',0   ; ← novo
+section .data
+msg_bye:        db "[OK] Saindo do FydelTerm...", 0
+msg_reboot_ok:  db "[!] Reiniciando FydelisTech OS...", 0
+msg_power_off:  db "[!] Desligando o sistema...", 0
+msg_confirmar:  db "[?] Confirma? (s/N): ", 0
+msg_cancel:     db "[X] Operacao cancelada.", 0
+
+; Strings para despacho de comandos no commands.asm
+global str_exit
+global str_reboot
+global str_poweroff
+global ajuda_exit
+global ajuda_reboot
+global ajuda_poweroff
+
+str_exit:       db "sair", 0
+str_reboot:     db "reiniciar", 0
+str_poweroff:   db "desligar", 0
+
+ajuda_exit:     db "sair      - Encerra sessao do terminal", 0
+ajuda_reboot:   db "reiniciar - Reinicia o sistema", 0
+ajuda_poweroff: db "desligar  - Desliga o sistema", 0
+
+section .bss
+buf_resp:       resb 8
+
+section .text
 
 ; ==========================================
-; 🔄 REINICIAR — Melhorado
+; REINICIAR (Com confirmação para o FydelTerm)
 ; ==========================================
 do_reboot:
     push rax
@@ -29,143 +54,154 @@ do_reboot:
     lea rsi, [rel msg_confirmar]
     call print_string
     call ler_resposta
-    cmp byte [buf_resp], 's'
+    cmp byte [rel buf_resp], 's'
     je .prosseguir
-    cmp byte [buf_resp], 'S'
+    cmp byte [rel buf_resp], 'S'
     je .prosseguir
 
     lea rsi, [rel msg_cancel]
     call print_string
-    jmp .fim
+    call print_newline
+    pop rsi
+    pop rax
+    ret
 
 .prosseguir:
     lea rsi, [rel msg_reboot_ok]
     call print_string
     call print_newline
+    pop rsi
+    pop rax
+    ; Cai direto na rotina de hardware abaixo
 
-    ; Método confiável — controlador de teclado
+; ==========================================
+; REINICIAR DIRETO (Chamado pelo Menu Iniciar / GUI)
+; ==========================================
+energia_reiniciar_agora:
+    cli
+    ; Aguarda buffer de entrada do controlador PS/2 esvaziar
+.espera_ps2:
+    in al, 0x64
+    test al, 0x02
+    jnz .espera_ps2
+
+    ; Pulso na linha de RESET da CPU via 8042
     mov al, 0xFE
     out 0x64, al
 
-    ; Se chegou aqui → tentativa alternativa
-    mov dx, 0x64
-    in al, dx
-    test al, 2
-    jnz $-4
-    mov al, 0xD1
-    out dx, al
-    mov dx, 0x60
-    mov al, 0
-    out dx, al
-
-    cli
 .parar:
     hlt
     jmp .parar
 
-.fim:
-    pop rsi
-    pop rax
-    ret
-
 ; ==========================================
-; 🔌 DESLIGAR — Novo comando
+; DESLIGAR (Com confirmação para o FydelTerm)
 ; ==========================================
 do_poweroff:
     push rax
     push rsi
-    push rdx
 
     lea rsi, [rel msg_confirmar]
     call print_string
     call ler_resposta
-    cmp byte [buf_resp], 's'
+    cmp byte [rel buf_resp], 's'
     je .prosseguir
-    cmp byte [buf_resp], 'S'
+    cmp byte [rel buf_resp], 'S'
     je .prosseguir
 
     lea rsi, [rel msg_cancel]
     call print_string
-    jmp .fim
+    call print_newline
+    pop rsi
+    pop rax
+    ret
 
 .prosseguir:
     lea rsi, [rel msg_power_off]
     call print_string
     call print_newline
+    pop rsi
+    pop rax
+    ; Cai direto na rotina de hardware abaixo
 
-    ; Tenta desligar via porta QEMU/ACPI
-    mov dx, 0x604
-    xor eax, eax
-    out dx, eax
-
-    ; Fallback: se não desligar, avisa
+; ==========================================
+; DESLIGAR DIRETO (Chamado pelo Menu Iniciar / GUI)
+; ==========================================
+energia_desligar_agora:
     cli
+    ; Desligamento ACPI padrão QEMU moderno
+    mov dx, 0x604
+    mov ax, 0x2000
+    out dx, ax
+
+    ; Fallback Bochs / QEMU antigo
+    mov dx, 0xB004
+    mov ax, 0x2000
+    out dx, ax
+
+    ; Fallback VirtualBox
+    mov dx, 0x4004
+    mov ax, 0x3400
+    out dx, ax
+
 .parar:
     hlt
     jmp .parar
 
-.fim:
-    pop rdx
-    pop rsi
-    pop rax
-    ret
-
 ; ==========================================
-; 🚪 SAIR — Mantido e melhorado
+; SAIR DO TERMINAL (Retorna ao menu de boot)
 ; ==========================================
 do_exit:
+    push rax
     push rsi
 
     lea rsi, [rel msg_confirmar]
     call print_string
     call ler_resposta
-    cmp byte [buf_resp], 's'
+    cmp byte [rel buf_resp], 's'
     je .prosseguir
-    cmp byte [buf_resp], 'S'
+    cmp byte [rel buf_resp], 'S'
     je .prosseguir
 
     lea rsi, [rel msg_cancel]
     call print_string
-    jmp .fim
+    call print_newline
+    pop rsi
+    pop rax
+    ret
 
 .prosseguir:
     lea rsi, [rel msg_bye]
     call print_success
     call print_newline
-
-    ; Retorna ao bootloader — ajuste o endereço se precisar
-    jmp 0x7C00   ; ← endereço padrão do bootloader MBR
-
-.fim:
     pop rsi
+    pop rax
     ret
 
 ; ==========================================
-; 📝 Função auxiliar: ler resposta do usuário
+; FUNÇÃO AUXILIAR: LER RESPOSTA (s/N)
 ; ==========================================
 ler_resposta:
     push rdi
     push rax
+    push rcx
 
-    lea rdi, [buf_resp]
-    mov rcx, 1
+    lea rdi, [rel buf_resp]
+    xor ecx, ecx
 .loop:
-    call ler_tecla       ; ← sua função do fydelterm
-    cmp al, 10          ; Enter
+    call ler_tecla
+    cmp al, 10          ; LF
     je .fim
     cmp al, 13          ; CR
     je .fim
-    stosb
+    cmp ecx, 6
+    jge .loop
+    mov [rdi + rcx], al
+    inc ecx
     jmp .loop
 
 .fim:
-    mov byte [rdi], 0
+    mov byte [rdi + rcx], 0
+    pop rcx
     pop rax
     pop rdi
     ret
-
-; Buffer temporário
-section .bss
-buf_resp: resb 8
-extern ler_tecla        ; ← confirme o nome da sua função
-extern print_success
