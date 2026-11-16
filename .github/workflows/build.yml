@@ -1,12 +1,17 @@
-name: Compilar FydelisTech OS
+name: Compilar e Publicar FydelisTech OS
 
 on:
   push:
     branches: [ main, master ]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
+permissions:
+  contents: write # Necessario para o GitHub Actions criar/atualizar Releases
+
 jobs:
-  build-os:
+  build-and-release:
     runs-on: ubuntu-latest
 
     steps:
@@ -27,12 +32,20 @@ jobs:
           make -f makefile clean
           make -f makefile
 
-      - name: Publicar ISO / Binario compilado para download
-        uses: actions/upload-artifact@v4
+      - name: Verificar arquivos gerados
+        run: |
+          ls -lh **/*.iso **/*.bin **/*.elf 2>/dev/null || true
+
+      - name: Publicar ISO na Release do GitHub
+        uses: softprops/action-gh-release@v2
         with:
-          name: FydelisTechOS-build
-          path: |
+          # Se o gatilho for uma tag (ex: v4.2), usa o nome da tag; senao atualiza a release "latest-build"
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest-build' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && format('FydelisTech OS {0}', github.ref_name) || 'FydelisTech OS (Build Automatico)' }}
+          body: |
+            Compilacao automatica gerada pelo GitHub Actions a partir do commit `${{ github.sha }}`.
+            Baixe a imagem `.iso` abaixo para testar no QEMU ou gravar em pendrive.
+          files: |
             **/*.iso
             **/*.bin
-            **/*.elf
-          if-no-files-found: warn
+          fail_on_unmatched_files: false
