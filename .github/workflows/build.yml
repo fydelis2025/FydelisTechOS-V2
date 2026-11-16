@@ -18,36 +18,27 @@ jobs:
       - name: Baixar codigo do repositorio
         uses: actions/checkout@v4
 
-      - name: Instalar toolchain (NASM, GCC, Python, GRUB/Xorriso)
+      - name: Instalar toolchain (NASM, GCC, Python, Genisoimage)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential nasm python3 python3-pil python3-cairosvg xorriso grub-pc-bin grub-common mtools
+          sudo apt-get install -y build-essential nasm python3 python3-pil python3-cairosvg genisoimage xorriso grub-pc-bin grub-common mtools
 
-      - name: Compilar Kernel em kernel/
+      - name: Compilar Kernel e ISO em kernel/
         working-directory: kernel
         run: |
-          MKFILE=$(find . -maxdepth 1 -iname "makefile" | head -n 1)
-          if [ -z "$MKFILE" ]; then
-            echo "Erro: Makefile nao encontrado em kernel/. Arquivos presentes:"
-            ls -la
-            exit 1
-          fi
-          echo "Usando arquivo: $MKFILE"
-          if grep -q "assets:" "$MKFILE"; then
-            make -f "$MKFILE" assets
-          fi
-          make -f "$MKFILE" clean
-          make -f "$MKFILE"
+          make clean
+          make
 
-      - name: Publicar ISO na Release do GitHub
+      - name: Publicar ISO e IMG na Release do GitHub
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest-build' }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && format('FydelisTech OS {0}', github.ref_name) || 'FydelisTech OS (Build Automatico)' }}
           body: |
             Compilacao automatica gerada pelo GitHub Actions a partir do commit `${{ github.sha }}`.
-            Baixe a imagem `.iso` abaixo para testar no QEMU ou gravar em pendrive.
+            Baixe `fydelterm.iso` ou `fydelterm.img` abaixo para testar no QEMU ou gravar em pendrive.
           files: |
-            **/*.iso
-            **/*.bin
+            kernel/fydelterm.iso
+            kernel/fydelterm.img
+            kernel/kernel.bin
           fail_on_unmatched_files: false
