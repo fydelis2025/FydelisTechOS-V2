@@ -72,23 +72,9 @@ Na versão **v4.2**, o sistema abandonou o modo texto VGA legado e passou a oper
 
 ## 🗂️ Estrutura do Repositório
 
-FydelisTechOS-V2/
-├── boot/          # Bootloader, GDT, IDT, interrupções e linker script
-├── kernel/        # Núcleo 64-bit (kernel.asm), motor gráfico C (exec.c) e Makefile
-├── drivers/       # Drivers: teclado, mouse, vídeo, PCI, disco e rede
-├── grafico/       # Compositor de janelas, framebuffer e GPU dispatch
-├── idioma/        # Suporte a múltiplos idiomas
-├── include/       # Cabeçalhos compartilhados (.h)
-├── pentest/       # Módulos de segurança e pentest 🛡️
-├── system/        # Configurações, logs e stubs do sistema
-├── user/          # Espaço de usuário e chamadas de sistema
-├── virtual/       # Detecção e suporte a virtualização (VMX / SVM / EPT)
-├── Desktop.png    # Screenshot da área de trabalho
-├── FyelTerm.png   # Screenshot do terminal
-├── Login.png      # Screenshot da tela de login
-├── versoes.json   # Histórico de versões
-├── LICENSE.md     # Licença GPL v3.0
-└── README.md      # Este arquivo!
+![Estrutura FydelisTech OS V2](arquitetura.png)
+
+> Visão geral dos diretórios e arquivos principais do repositório
 
 
 ---
