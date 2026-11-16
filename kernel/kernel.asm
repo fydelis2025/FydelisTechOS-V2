@@ -31,7 +31,7 @@ extern obter_tamanho_disco
 extern audio_init
 extern bt_detectar_placa
 extern bt_inicializar
-extern rede_inicializar
+extern inicializar_nic_mmio
 
 global bytes_para_gb
 global _entry16
@@ -373,7 +373,7 @@ start:
 .sem_bt:
 
     ; 3. Inicializa placa de rede Intel E1000
-    call    rede_inicializar
+    call    inicializar_nic_mmio
 
     lea     rsi, [msg_hw_ok]
     call    print_string
