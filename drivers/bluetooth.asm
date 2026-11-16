@@ -1,14 +1,15 @@
 ; ==========================================
-; DRIVER BLUETOOTH NATIVO — FYDELIS TECH OS
-; De Salvador • Bahia 🇧🇷
-; Fala direto com o hardware — SEM Windows/Linux
+; DRIVER BLUETOOTH NATIVO - FYDELIS TECH OS
+; De Salvador - Bahia
+; Fala direto com o hardware - SEM Windows/Linux
 ; ==========================================
 BITS 64
 %include "../include/fydelterm.inc"
 
-; --- Exporta para o sistema ---
+; --- Exporta para o sistema e GUI (exec.c) ---
 global bt_detectar_placa
 global bt_inicializar
+global bt_ler_status
 global sys_bt_scan
 global sys_bt_conectar
 global sys_bt_desconectar
@@ -16,19 +17,18 @@ global sys_bt_enviar_dados
 global sys_bt_receber_dados
 
 ; --- Registros do Controlador HCI ---
-; Faixa padrão adaptável conforme chip detectado
 BT_BASE_UNKNOWN  equ 0x00000000
 
-; Registros HCI via I/O ou MMIO
-HCI_CMD          equ 0x00   ; Registro de Comando
-HCI_DATA_TX      equ 0x04   ; Buffer de Transmissão
-HCI_DATA_RX      equ 0x08   ; Buffer de Recepção
-HCI_STATUS       equ 0x0C   ; Status do controlador
+; Registros HCI via MMIO
+HCI_CMD          equ 0x00    ; Registro de Comando
+HCI_DATA_TX      equ 0x04    ; Buffer de Transmissao
+HCI_DATA_RX      equ 0x08    ; Buffer de Recepcao
+HCI_STATUS       equ 0x0C    ; Status do controlador
   HCI_OCUPADO    equ 1 << 0
   HCI_PRONTO     equ 1 << 1
   HCI_CONECTADO  equ 1 << 2
 
-; Comandos HCI padrão
+; Comandos HCI padrao
 HCI_RESET        equ 0x0C03
 HCI_READ_BDADDR  equ 0x1009
 HCI_SET_NAME     equ 0x0C13
@@ -39,58 +39,92 @@ HCI_DISCONNECT   equ 0x0406
 ; Limites
 MAX_DISPOSITIVOS equ 16
 NOME_TAMANHO     equ 24
-BDADDR_TAMANHO    equ 6
+BDADDR_TAMANHO   equ 6
 
 ; --- Estrutura: Dispositivo Bluetooth ---
 struc BtDispositivo
-    bdaddr:     resb BDADDR_TAMANHO   ; Endereço do dispositivo
-    nome:       resb NOME_TAMANHO + 1 ; Nome amigável
-    classe:     resd 1                ; Classe do dispositivo
-    sinal:      resb 1                ; Força do sinal (0-100%)
-    conectado:  resb 1                ; 1 = conectado
-    proximo:    resq 1                ; Próximo da lista
+    bdaddr:     resb BDADDR_TAMANHO    ; Endereco do dispositivo
+    nome:       resb NOME_TAMANHO + 1  ; Nome amigavel
+    classe:     resd 1                 ; Classe do dispositivo
+    sinal:      resb 1                 ; Forca do sinal (0-100%)
+    conectado:  resb 1                 ; 1 = conectado
+    proximo:    resq 1                 ; Proximo da lista
 endstruc
 
 section .bss
 align 16
-bt_base:           resq 1        ; Endereço base do controlador
-bt_placa_ok:       resb 1        ; 1 = placa detectada
-bt_inicializada:   resb 1        ; 1 = driver pronto
-bt_conectado:      resb 1        ; 1 = conectado a um dispositivo
-bt_nome_local:     resb NOME_TAMANHO + 1
+bt_base:               resq 1          ; Endereco base MMIO do controlador
+bt_placa_ok:           resb 1          ; 1 = placa detectada
+bt_inicializada:       resb 1          ; 1 = driver pronto
+bt_conectado:          resb 1          ; 1 = conectado a um dispositivo
+bt_nome_local:         resb NOME_TAMANHO + 1
+bt_endereco_alvo:      resb BDADDR_TAMANHO
 bt_lista_dispositivos: resb (BtDispositivo_size * MAX_DISPOSITIVOS)
-bt_contador:       resd 1
+bt_contador:           resd 1
 
 section .text
 
 ; ==========================================
-; DETECTAR PLACA — Busca na barra PCI
-; Retorna: rax = 1 se encontrou, 0 se não
+; bt_ler_status - Consulta rapida para o Systray (exec.c)
+; Saida: rax = 0 (ausente), 1 (placa pronta), 2 (conectado)
+; ==========================================
+bt_ler_status:
+    cmp     byte [bt_conectado], 1
+    je      .conectado
+    cmp     byte [bt_placa_ok], 1
+    je      .pronto
+    xor     rax, rax
+    ret
+.pronto:
+    mov     rax, 1
+    ret
+.conectado:
+    mov     rax, 2
+    ret
+
+; ==========================================
+; DETECTAR PLACA - Busca no barramento PCI (Bus 0, Slots 0..31)
+; Retorna: rax = 1 se encontrou, 0 se nao
 ; ==========================================
 bt_detectar_placa:
+    push    rbx
     push    rcx
     push    rdx
 
-    ; Percorre dispositivos PCI
-    xor     rcx, rcx
+    xor     rbx, rbx                ; Slot PCI 0..31 (Bus 0, Func 0)
 .pci_proximo:
-    ; Ler Vendor/Device ID
-    call    pci_ler_dispositivo
-    cmp     rax, 0xFFFFFFFF
+    ; Endereco PCI Config: (1 << 31) | (slot << 11)
+    mov     eax, ebx
+    shl     eax, 11
+    or      eax, 0x80000000
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    in      eax, dx
+    cmp     eax, 0xFFFFFFFF
     je      .proximo
 
-    ; Verificar classe: 02 80 00 = Comunicação → Sem Fio → Bluetooth
-    call    pci_ler_classe
-    cmp     eax, 0x00800200
+    ; Ler Class Code / Subclass (offset 0x08)
+    mov     eax, ebx
+    shl     eax, 11
+    or      eax, 0x80000008
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    in      eax, dx
+    shr     eax, 16                 ; AX = Base Class (alto) + Subclass (baixo)
+
+    ; Classe 0x0D11 = Wireless Controller -> Bluetooth
+    cmp     ax, 0x0D11
     je      .encontrada
 
-    ; Também pode aparecer como classe genérica USB no controlador
-    cmp     eax, 0x0C030000        ; USB Controller
-    je      .verificar_usb_bt
+    ; Classe 0x0280 = Network / Other Wireless
+    cmp     ax, 0x0280
+    je      .encontrada
 
 .proximo:
-    inc     rcx
-    cmp     rcx, 256
+    inc     rbx
+    cmp     rbx, 32
     jl      .pci_proximo
 
     mov     byte [bt_placa_ok], 0
@@ -98,33 +132,38 @@ bt_detectar_placa:
     jmp     .fim
 
 .encontrada:
-    ; Mapear BAR0
-    call    pci_ler_bar0
+    ; Ler BAR0 (offset 0x10)
+    mov     eax, ebx
+    shl     eax, 11
+    or      eax, 0x80000010
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    in      eax, dx
+    and     eax, 0xFFFFFFF0         ; Mascara flags MMIO
     mov     [bt_base], rax
+
     mov     byte [bt_placa_ok], 1
     mov     rax, 1
-    jmp     .fim
-
-.verificar_usb_bt:
-    ; Controladores Bluetooth via USB — verificação simplificada
-    ; Em implementação completa: percorrer dispositivos USB
-    mov     byte [bt_placa_ok], 0
-    xor     rax, rax
 
 .fim:
     pop     rdx
     pop     rcx
+    pop     rbx
     ret
 
 ; ==========================================
-; INICIALIZAR — Reset e configuração HCI
+; INICIALIZAR - Reset e configuracao HCI
 ; ==========================================
 bt_inicializar:
     cmp     byte [bt_placa_ok], 1
     jne     .sem_placa
 
-    ; Enviar RESET ao controlador HCI
     mov     rax, [bt_base]
+    test    rax, rax
+    jz      .sem_placa
+
+    ; Enviar RESET ao controlador HCI
     mov     dword [rax + HCI_CMD], HCI_RESET
     call    bt_espera_pronto
 
@@ -135,12 +174,11 @@ bt_inicializar:
     rep     movsb
     mov     byte [rdi], 0
 
-    ; Ler endereço BD_ADDR do controlador
+    ; Ler endereco BD_ADDR do controlador
     mov     rax, [bt_base]
     mov     dword [rax + HCI_CMD], HCI_READ_BDADDR
     call    bt_espera_pronto
 
-    ; Pronto!
     mov     byte [bt_inicializada], 1
     mov     dword [bt_contador], 0
     mov     rax, 1
@@ -151,26 +189,21 @@ bt_inicializar:
     ret
 
 ; ==========================================
-; sys_bt_scan — Escanear dispositivos próximos
+; sys_bt_scan - Escanear dispositivos proximos
 ; Retorna: rax = ponteiro para lista BtDispositivo
-; Chamado por: comando "bt scan" no terminal
 ; ==========================================
 sys_bt_scan:
     cmp     byte [bt_inicializada], 1
     jne     .nao_pronto
 
-    ; Limpar lista
     mov     dword [bt_contador], 0
 
-    ; Enviar comando de investigação (inquiry)
     mov     rax, [bt_base]
     mov     dword [rax + HCI_CMD], HCI_INQUIRY
     call    bt_espera_pronto
 
-    ; Parsear resultados recebidos
     call    bt_parse_resultados
 
-    ; Retornar lista
     mov     rax, bt_lista_dispositivos
     ret
 
@@ -179,7 +212,7 @@ sys_bt_scan:
     ret
 
 ; ==========================================
-; sys_bt_conectar — Conectar a dispositivo
+; sys_bt_conectar - Conectar a dispositivo
 ; Entrada: rdi = ponteiro para BD_ADDR (6 bytes)
 ; Retorna: rax = 1 sucesso, 0 falha
 ; ==========================================
@@ -190,18 +223,15 @@ sys_bt_conectar:
     cmp     byte [bt_inicializada], 1
     jne     .falha
 
-    ; Copiar endereço de destino
     mov     rsi, rdi
     mov     rdi, bt_endereco_alvo
     mov     rcx, BDADDR_TAMANHO
     rep     movsb
 
-    ; Enviar comando de conexão
     mov     rax, [bt_base]
     mov     dword [rax + HCI_CMD], HCI_CREATE_CONN
     call    bt_espera_pronto
 
-    ; Verificar status
     mov     rax, [bt_base]
     mov     edx, [rax + HCI_STATUS]
     test    edx, HCI_CONECTADO
@@ -219,7 +249,7 @@ sys_bt_conectar:
     ret
 
 ; ==========================================
-; sys_bt_desconectar — Encerrar conexão
+; sys_bt_desconectar - Encerrar conexao
 ; ==========================================
 sys_bt_desconectar:
     cmp     byte [bt_inicializada], 1
@@ -238,7 +268,7 @@ sys_bt_desconectar:
     ret
 
 ; ==========================================
-; sys_bt_enviar_dados — Transmitir dados
+; sys_bt_enviar_dados - Transmitir dados
 ; Entrada: rsi=dados, rdx=tamanho
 ; ==========================================
 sys_bt_enviar_dados:
@@ -246,11 +276,10 @@ sys_bt_enviar_dados:
     jne     .nao_conectado
 
     mov     rax, [bt_base]
-    ; Copiar dados para buffer de transmissão
     mov     rcx, rdx
-    mov     rdi, [rax + HCI_DATA_TX]
+    lea     rdi, [rax + HCI_DATA_TX]
     rep     movsb
-    ; Confirmar envio
+
     mov     dword [rax + HCI_STATUS], 0
     call    bt_espera_pronto
     mov     rax, 1
@@ -261,14 +290,14 @@ sys_bt_enviar_dados:
     ret
 
 ; ==========================================
-; sys_bt_receber_dados — Ler dados recebidos
+; sys_bt_receber_dados - Ler dados recebidos
 ; ==========================================
 sys_bt_receber_dados:
     cmp     byte [bt_conectado], 1
     jne     .sem_dados
 
     mov     rax, [bt_base]
-    mov     rsi, [rax + HCI_DATA_RX]
+    lea     rsi, [rax + HCI_DATA_RX]
     mov     rax, 1
     ret
 
@@ -281,55 +310,53 @@ sys_bt_receber_dados:
 ; ==========================================
 bt_espera_pronto:
     push    rax
+    push    rcx
     push    rdx
     mov     rax, [bt_base]
+    mov     rcx, 100000             ; Timeout de seguranca para evitar loop infinito
 .loop:
     mov     edx, [rax + HCI_STATUS]
     test    edx, HCI_OCUPADO
     jz      .pronto
     pause
-    jmp     .loop
+    dec     rcx
+    jnz     .loop
 .pronto:
     pop     rdx
+    pop     rcx
     pop     rax
     ret
 
 bt_parse_resultados:
-    ; Converte pacotes HCI recebidos em estruturas BtDispositivo
-    ; Formato depende do controlador — exemplo genérico:
-    ; [BDADDR(6)][NOME(24)][CLASSE(4)][SINAL(1)]
     push    rbx
     push    rcx
     push    rdx
     push    rsi
     push    rdi
 
-    mov     rsi, [bt_base + HCI_DATA_RX]
+    mov     rax, [bt_base]
+    lea     rsi, [rax + HCI_DATA_RX]
     mov     rdi, bt_lista_dispositivos
-    mov     rcx, 0
+    xor     rbx, rbx
 
 .proximo:
-    cmp     rcx, MAX_DISPOSITIVOS
+    cmp     rbx, MAX_DISPOSITIVOS
     jge     .fim
 
-    ; Verificar se há dispositivo válido
     cmp     byte [rsi], 0
     jz      .fim
 
-    ; Copiar BD_ADDR
     mov     rdx, rdi
     mov     rcx, BDADDR_TAMANHO
     rep     movsb
 
-    ; Copiar nome
     mov     rcx, NOME_TAMANHO
     rep     movsb
     mov     byte [rdi], 0
 
-    ; Avançar para próxima entrada
     inc     dword [bt_contador]
-    add     rdi, BtDispositivo_size
-    inc     rcx
+    lea     rdi, [rdx + BtDispositivo_size]
+    inc     rbx
     jmp     .proximo
 
 .fim:
@@ -342,5 +369,4 @@ bt_parse_resultados:
 
 ; --- Dados Constantes ---
 section .data
-nome_fydelis: db "FydelisTech-Device",0
-bt_endereco_alvo: resb BDADDR_TAMANHO
+nome_fydelis: db "FydelisTech-Device", 0
