@@ -1,6 +1,6 @@
 # ==========================================
 # FYDELIS TECH OS — FydelTerm Kernel Makefile
-# v2.3: correcoes de build robusto
+# v2.4: integracao com tools/ e assets graficos
 # Padrao de inclusao: src/include/syscalls
 # De Salvador • Bahia 🇧🇷
 # ==========================================
@@ -49,7 +49,20 @@ CFLAGS    = -m64 \
             -Wall \
             -MMD -MP
 
+PYTHON    = python3
+ROOT_DIR  = ../..
+TOOLS_DIR = $(ROOT_DIR)/tools
+ASSETS_DIR= $(ROOT_DIR)/assets
+INC_DIR   = ../include
 BUILD_DIR ?= build
+
+# ==========================================
+# 🎨 ASSETS GRAFICOS GERADOS VIA tools/
+# ==========================================
+HEADERS_ASSETS = \
+    $(INC_DIR)/icones.h \
+    $(INC_DIR)/fontes_ui.h \
+    $(INC_DIR)/wallpaper.h
 
 # ==========================================
 # 📦 ARQUIVOS OBJETO — ORDEM DE CARGA VITAL!
@@ -72,8 +85,8 @@ OBJS = \
     memmap.o                \
     syscall_handler.o       \
     stubs_kernel.o          \
-    estrutura.o          \
-    energia.o          \
+    estrutura.o             \
+    energia.o               \
     ../pentest/pentest.o    \
     ../boot/gdt.o           \
     ../boot/idt.o           \
@@ -96,7 +109,7 @@ OBJS = \
     ../drivers/impressora.o \
     ../drivers/dhcp_servidor.o \
     ../drivers/usb.o        \
-    ../drivers/mouse.o        \
+    ../drivers/mouse.o      \
     ../drivers/texto.o      \
     ../virtual/virt_detect.o \
     ../virtual/plataforma_detect.o \
@@ -142,7 +155,7 @@ OBJS = \
 # ==========================================
 # 🎯 ALVO PRINCIPAL
 # ==========================================
-all: fydelterm.img $(BUILD_DIR)/fyd_boot.cfg
+all: assets fydelterm.img $(BUILD_DIR)/fyd_boot.cfg
 	@echo "Build do kernel e configuração concluído com sucesso!"
 
 $(BUILD_DIR)/fyd_boot.cfg: ../boot/fyd_boot.cfg
@@ -151,10 +164,33 @@ $(BUILD_DIR)/fyd_boot.cfg: ../boot/fyd_boot.cfg
 	@echo "[+] Copiado fyd_boot.cfg para $(BUILD_DIR)"
 
 # ==========================================
-# 🔧 REGRAS DE COMPILAÇÃO
-# (%.o casa com subdiretorios — as regras por
-#  pasta eram redundantes e foram unificadas)
+# 🐍 PIPELINE PYTHON (tools/ -> src/include/)
 # ==========================================
+$(ASSETS_DIR)/icones/ethernet.svg: $(TOOLS_DIR)/gerar_kit_icones.py
+	@echo "  PY       Gerando kit base de icones SVG"
+	cd $(ROOT_DIR) && $(PYTHON) tools/gerar_kit_icones.py
+
+$(INC_DIR)/icones.h: $(ASSETS_DIR)/icones/ethernet.svg $(wildcard $(ASSETS_DIR)/icones/*.svg) $(TOOLS_DIR)/svg2c.py
+	@echo "  PY       Convertendo SVGs -> icones.h"
+	cd $(ROOT_DIR) && $(PYTHON) tools/svg2c.py
+
+$(INC_DIR)/fontes_ui.h: $(wildcard $(ASSETS_DIR)/fontes/*.ttf) $(TOOLS_DIR)/ttf2c.py
+	@echo "  PY       Gerando fontes UI -> fontes_ui.h"
+	cd $(ROOT_DIR) && $(PYTHON) tools/ttf2c.py
+
+$(INC_DIR)/wallpaper.h: $(wildcard $(ASSETS_DIR)/wallpapers/*) $(TOOLS_DIR)/img2fb.py
+	@echo "  PY       Gerando wallpaper -> wallpaper.h"
+	cd $(ROOT_DIR) && $(PYTHON) tools/img2fb.py
+
+assets: $(HEADERS_ASSETS)
+
+# ==========================================
+# 🔧 REGRAS DE COMPILAÇÃO
+# ==========================================
+exec.o: exec.c $(HEADERS_ASSETS)
+	@echo "  CC       $< (com assets graficos)"
+	$(CC) $(CFLAGS) -c $< -o $@
+
 %.o: %.asm
 	@echo "  AS       $<"
 	$(ASM) $(ASFLAGS) $< -o $@
@@ -189,20 +225,16 @@ kernel.bin: $(OBJS)
 
 # ==========================================
 # 💿 IMAGEM DE DISCO
-# LBA 4096 (offset 2 MiB) + 128 setores (64 KiB)
-# → imagem de 4 MiB dá folga sobrando
+# LBA 4096 (offset 2 MiB) + setores do kernel
 # ==========================================
 fydelterm.img: boot.bin kernel.bin
 	@echo "  IMG      $@"
-	dd if=/dev/zero of=$@ bs=1M count=4 status=none
+	dd if=/dev/zero of=$@ bs=1M count=8 status=none
 	dd if=boot.bin   of=$@ conv=notrunc bs=512 count=1 status=none
 	dd if=kernel.bin of=$@ conv=notrunc bs=512 seek=4096 status=none
 
 # ==========================================
 # 🌐 ISO
-# El Torito espera imagem de disquete 1.44MB,
-# não a imagem de HD — gravamos o bootloader
-# num arquivo de floppy padronizado
 # ==========================================
 boot_flp.img: boot.bin
 	@echo "  FLP      $@"
@@ -241,8 +273,6 @@ run: fydelterm.img
 		-display gtk \
 		-serial stdio
 
-# Depuração com GDB: make debug → conecte com
-#   gdb -ex "target remote :1234" kernel.bin
 debug: fydelterm.img
 	qemu-system-x86_64 \
 		-drive format=raw,file=fydelterm.img \
@@ -267,4 +297,7 @@ clean:
 	rm -f *.bin *.EFI fydelterm.img boot_flp.img fydelterm.iso
 	@echo "✅ Limpo!"
 
-.PHONY: all iso run debug clean
+distclean: clean
+	rm -f $(HEADERS_ASSETS)
+
+.PHONY: all assets iso run debug clean distclean
