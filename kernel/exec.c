@@ -41,10 +41,13 @@ extern uint64_t ws_inicializar(void);
 extern void     ws_atualizar_cursor(void);
 extern uint64_t rede_ler_status_link(void);
 extern uint64_t timer_ler_ticks(void);
-
+//bluetooth
 extern uint64_t bt_ler_status(void);
+//audio
 extern uint64_t audio_ler_status(void);
+//disco
 extern uint64_t detectar_disco(uint64_t numero_disco);
+extern uint64_t obter_tamanho_disco(void);
 
 /* Modos de exibição da Janela Principal */
 enum {
@@ -71,6 +74,24 @@ typedef struct {
     int             coluna;   /* 0 = Aplicativos (Esquerda), 1 = Sistema (Direita) */
     int             acao_id;
 } ItemMenuIniciar;
+
+/* ============================================================================
+ * TELEMETRIA DE HARDWARE (CPU via CPUID/RDTSC, RAM via CMOS, DISCO via ATA)
+ * ============================================================================ */
+typedef struct {
+    char     cpu_vendor[16];
+    int      cpu_uso_pct;
+    uint32_t ram_total_mb;
+    uint32_t ram_usada_mb;
+    uint32_t disco_total_mb;
+    int      disco_online;
+} TelemetriaSistema;
+
+static inline uint64_t ler_tsc(void) {
+    uint32_t lo, hi;
+    __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
+    return ((uint64_t)hi << 32) | lo;
+}
 
 static const ItemMenuIniciar itens_menu[] = {
     /* Coluna 0: APLICATIVOS */
@@ -466,6 +487,149 @@ static void escrever_texto_centralizado(const char *texto, int centro_x, int y, 
 }
 
 /* ============================================================================
+ * TELEMETRIA DE HARDWARE (CPU via CPUID/RDTSC, RAM via CMOS, DISCO via ATA)
+ * ============================================================================ */
+static void obter_cpu_vendor(char *out16) {
+    uint32_t eax, ebx, ecx, edx;
+    __asm__ volatile ("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(0));
+
+    *(uint32_t *)(out16 + 0) = ebx;
+    *(uint32_t *)(out16 + 4) = edx;
+    *(uint32_t *)(out16 + 8) = ecx;
+    out16[12] = 0;
+}
+
+static uint32_t detectar_ram_total_mb(void) {
+    /* Regs CMOS 0x34/0x35: memoria acima de 16 MB em blocos de 64 KB */
+    uint32_t b64_lo = ler_cmos(0x34);
+    uint32_t b64_hi = ler_cmos(0x35);
+    uint32_t blocos_64k = (b64_hi << 8) | b64_lo;
+
+    if (blocos_64k > 0) {
+        return 16 + ((blocos_64k * 64) / 1024);
+    }
+
+    /* Fallback regs CMOS 0x30/0x31: memoria estendida em KB */
+    uint32_t kb_lo = ler_cmos(0x30);
+    uint32_t kb_hi = ler_cmos(0x31);
+    uint32_t ext_kb = (kb_hi << 8) | kb_lo;
+    return 1 + (ext_kb / 1024);
+}
+
+static void inicializar_telemetria(TelemetriaSistema *tel, int L, int A) {
+    obter_cpu_vendor(tel->cpu_vendor);
+    tel->cpu_uso_pct = 8;
+
+    tel->ram_total_mb = detectar_ram_total_mb();
+    if (tel->ram_total_mb < 32) tel->ram_total_mb = 128;
+
+    /* Kernel + Stack + VFS + Framebuffer VESA 32-bit */
+    uint32_t fb_mb = (uint32_t)(((uint64_t)L * (uint64_t)A * 4ULL) / (1024ULL * 1024ULL));
+    tel->ram_usada_mb = 12 + fb_mb;
+    if (tel->ram_usada_mb > tel->ram_total_mb) {
+        tel->ram_usada_mb = tel->ram_total_mb / 2;
+    }
+
+    tel->disco_online = (detectar_disco(0) != 0);
+    if (tel->disco_online) {
+        uint64_t setores = obter_tamanho_disco();
+        /* 1 setor = 512 bytes -> 2048 setores = 1 MB */
+        tel->disco_total_mb = (uint32_t)(setores / 2048ULL);
+    } else {
+        tel->disco_total_mb = 0;
+    }
+}
+
+static void desenhar_barra_progresso(int x, int y, int w, int h, int pct, uint32_t cor_fill) {
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+    desenhar_caixa_com_borda(x, y, w, h, 1, COR_BORDA_SUTIL, COR_INPUT_BG);
+    int fill_w = ((w - 2) * pct) / 100;
+    if (fill_w > 0) {
+        desenhar_retangulo_solido(x + 1, y + 1, fill_w, h - 2, cor_fill);
+    }
+}
+
+static void desenhar_widgets_sistema(int L, const TelemetriaSistema *tel) {
+    int w_larg = 256;
+    int w_alt  = 214;
+    int wx     = L - w_larg - 14;
+    int wy     = 48;
+
+    char linha[48];
+    char num[16];
+    size_t p;
+
+    /* Moldura do Painel de Widgets */
+    desenhar_caixa_com_borda(wx, wy, w_larg, w_alt, 1, COR_ROXO_NEON, COR_PAINEL);
+    desenhar_retangulo_solido(wx + 1, wy + 1, w_larg - 2, 24, COR_CARD);
+    gpu_escrever_texto("MONITOR DE HARDWARE", wx + 12, wy + 5, COR_CIANO_NEON);
+
+    int cx = wx + 12;
+    int cy = wy + 34;
+    int bar_w = w_larg - 24;
+
+    /* --- WIDGET 1: CPU --- */
+    gpu_desenhar_icone(icone_sistema, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+    str_copy(linha, "CPU: ", sizeof(linha));
+    p = str_len(linha);
+    str_copy(linha + p, tel->cpu_vendor, sizeof(linha) - p);
+    gpu_escrever_texto(linha, cx + 26, cy, COR_TEXTO_BRANCO);
+
+    num_para_str(tel->cpu_uso_pct, num, sizeof(num));
+    p = str_len(num);
+    num[p] = '%';
+    num[p + 1] = 0;
+    gpu_escrever_texto(num, wx + w_larg - 44, cy, COR_CIANO_NEON);
+
+    cy += 22;
+    desenhar_barra_progresso(cx, cy, bar_w, 12, tel->cpu_uso_pct, COR_CIANO_NEON);
+    cy += 24;
+
+    /* --- WIDGET 2: MEMORIA RAM --- */
+    gpu_desenhar_icone(icone_agenda, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+    str_copy(linha, "RAM: ", sizeof(linha));
+    num_para_str((int)tel->ram_usada_mb, num, sizeof(num));
+    p = str_len(linha);
+    str_copy(linha + p, num, sizeof(linha) - p);
+    p = str_len(linha);
+    str_copy(linha + p, "/", sizeof(linha) - p);
+    num_para_str((int)tel->ram_total_mb, num, sizeof(num));
+    p = str_len(linha);
+    str_copy(linha + p, num, sizeof(linha) - p);
+    p = str_len(linha);
+    str_copy(linha + p, " MB", sizeof(linha) - p);
+    gpu_escrever_texto(linha, cx + 26, cy, COR_TEXTO_BRANCO);
+
+    int ram_pct = (tel->ram_total_mb > 0)
+        ? (int)((tel->ram_usada_mb * 100U) / tel->ram_total_mb)
+        : 0;
+    cy += 22;
+    desenhar_barra_progresso(cx, cy, bar_w, 12, ram_pct, COR_VERDE_NEON);
+    cy += 24;
+
+    /* --- WIDGET 3: DISCO TOTAL --- */
+    gpu_desenhar_icone(icone_disco, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+    if (tel->disco_online) {
+        str_copy(linha, "DISCO: ", sizeof(linha));
+        num_para_str((int)tel->disco_total_mb, num, sizeof(num));
+        p = str_len(linha);
+        str_copy(linha + p, num, sizeof(linha) - p);
+        p = str_len(linha);
+        str_copy(linha + p, " MB Total", sizeof(linha) - p);
+        gpu_escrever_texto(linha, cx + 26, cy, COR_TEXTO_BRANCO);
+    } else {
+        gpu_escrever_texto("DISCO: Nao detectado", cx + 26, cy, COR_VERMELHO_ALERTA);
+    }
+
+    cy += 22;
+    desenhar_barra_progresso(cx, cy, bar_w, 12, tel->disco_online ? 100 : 0, COR_ROXO_CLARO);
+    cy += 18;
+    gpu_escrever_texto(tel->disco_online ? "ATA Primary Master (0x1F0) OK" : "Verifique imagem .vdi/.img",
+                       cx, cy, COR_TEXTO_SUAVE);
+}
+
+/* ============================================================================
  * SYSTEM TRAY (CANTO INFERIOR DIREITO: REDE + WIFI + BT + AUDIO + DISCO + RTC)
  * ============================================================================ */
 #define SYSTRAY_LARGURA 248
@@ -836,7 +1000,7 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
 }
 
 /* ============================================================================
- * TELA 3: ÁREA DE TRABALHO GRÁFICA (Botão F + Menu + Janelas + Systray)
+ * TELA 3: ÁREA DE TRABALHO GRÁFICA (Botão F + Menu + Janelas + Widgets + Systray)
  * Retorno: 0 = voltar para FydelTerm | 1 = bloquear sessão (voltar ao Login)
  * ============================================================================ */
 static int exibir_desktop_grafico(int L, int A) {
@@ -899,11 +1063,17 @@ static int exibir_desktop_grafico(int L, int A) {
     pos = str_len(res_buf);
     str_copy(res_buf + pos, " @ 32-bit", sizeof(res_buf) - pos);
 
+    /* Inicializa Telemetria de CPU, RAM e Disco */
+    TelemetriaSistema telemetria;
+    inicializar_telemetria(&telemetria, L, A);
+    uint64_t tsc_anterior  = ler_tsc();
+    uint64_t ciclos_ativos = 0;
+
     while (1) {
         int mx, my, mb;
         obter_estado_mouse(&mx, &my, &mb);
 
-        /* Atualiza relógio RTC e status de Bluetooth/Audio periodicamente */
+        /* Atualiza relógio RTC, CPU e status de Bluetooth/Audio periodicamente */
         uint64_t ticks_agora = timer_ler_ticks();
         if ((ticks_agora - ticks_ant) >= 100) {
             ticks_ant = ticks_agora;
@@ -911,6 +1081,21 @@ static int exibir_desktop_grafico(int L, int A) {
 
             int novo_bt    = (int)bt_ler_status();
             int novo_audio = (int)audio_ler_status();
+
+            uint64_t tsc_agora = ler_tsc();
+            uint64_t delta_tsc = tsc_agora - tsc_anterior;
+            tsc_anterior = tsc_agora;
+
+            if (delta_tsc > 0) {
+                int pct = (int)((ciclos_ativos * 100ULL) / delta_tsc);
+                if (pct < 2) pct = 2;
+                if (pct > 100) pct = 100;
+                if (pct != telemetria.cpu_uso_pct) {
+                    telemetria.cpu_uso_pct = pct;
+                    precisa_redesenhar = 1;
+                }
+            }
+            ciclos_ativos = 0;
 
             if (dt_atual.min != min_anterior || novo_bt != bt_estado || novo_audio != audio_estado) {
                 min_anterior = dt_atual.min;
@@ -933,6 +1118,7 @@ static int exibir_desktop_grafico(int L, int A) {
         }
 
         if (precisa_redesenhar) {
+            uint64_t t_frame_ini = ler_tsc();
             ws_inicializar();
 
             /* 1. Fundo do Desktop */
@@ -953,6 +1139,9 @@ static int exibir_desktop_grafico(int L, int A) {
 
             gpu_desenhar_icone(icone_config, 22, 122, ICONE_TAM, ICONE_TAM);
             gpu_escrever_texto("Configuracoes", 48, 124, COR_TEXTO_SUAVE);
+
+            /* 3.1 Widgets de CPU, RAM e Disco Total no canto superior direito */
+            desenhar_widgets_sistema(L, &telemetria);
 
             /* 4. Janela Arrastável Dinâmica */
             if (janela_aberta) {
@@ -1087,6 +1276,7 @@ static int exibir_desktop_grafico(int L, int A) {
                 desenhar_menu_iniciar_categorizado(menu_x, menu_y, menu_w, menu_h, mx, my);
             }
 
+            ciclos_ativos += (ler_tsc() - t_frame_ini);
             precisa_redesenhar = 0;
         }
 
