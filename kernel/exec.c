@@ -52,7 +52,7 @@ extern uint64_t audio_ler_status(void);
 extern uint64_t detectar_disco(uint64_t numero_disco);
 extern uint64_t obter_tamanho_disco(void);
 //rede
-extern void rede_inicializar(void);
+
 
 /* Modos de exibição da Janela Principal */
 enum {
@@ -1017,8 +1017,7 @@ static int exibir_desktop_grafico(int L, int A) {
     if (bt_detectar_placa() != 0) {
         bt_inicializar();
     }
-    rede_inicializar();
-    
+        
     /* Estado da janela principal */
     int win_w = (L * 64) / 100;
     if (win_w < 500) win_w = 500;
