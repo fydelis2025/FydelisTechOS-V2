@@ -1,8 +1,8 @@
-; ==========================================
-; ESTRUTURA.ASM — Árvore de Diretórios do Sistema (/fyd)
-; FydelisTech OS v4.2 — Compartilhada entre FydelTerm & GUI
+; ============================================================================
+; ESTRUTURA.ASM — Arvore de Diretorios do Sistema (/fyd)
+; FydelisTech OS v4.2 — Compartilhada entre FydelTerm & Interface Grafica
 ; Salvador • Bahia
-; ==========================================
+; ============================================================================
 BITS 64
 default rel
 
@@ -22,8 +22,10 @@ extern print_char
 
 section .data
 
-; ═══════ RAIZ ═══════
+; ═══════ RAIZ & RUNTIME ═══════
 pasta_raiz:          db "/fyd", 0
+pasta_tmp:           db "/fyd/tmp", 0
+pasta_dev:           db "/fyd/dev", 0
 
 ; ═══════ DISCO E ARMAZENAMENTO ═══════
 pasta_disco:         db "/fyd/disco", 0
@@ -35,7 +37,7 @@ pasta_usb_u2:        db "/fyd/usb/fydu2", 0
 pasta_midia:         db "/fyd/midia", 0
 pasta_rede:          db "/fyd/rede", 0
 
-; ═══════ SISTEMA E BINÁRIOS ═══════
+; ═══════ SISTEMA E BINARIOS ═══════
 pasta_bin:           db "/fyd/bin", 0
 pasta_lib:           db "/fyd/lib", 0
 pasta_apps:          db "/fyd/apps", 0
@@ -43,7 +45,7 @@ pasta_terminal:      db "/fyd/terminal", 0
 pasta_boot:          db "/fyd/boot", 0
 pasta_config:        db "/fyd/config", 0
 
-; ═══════ USUÁRIO ═══════
+; ═══════ USUARIO ═══════
 pasta_home:          db "/fyd/usuario", 0
 pasta_documentos:    db "/fyd/usuario/documentos", 0
 pasta_imagens:       db "/fyd/usuario/imagens", 0
@@ -52,7 +54,7 @@ pasta_downloads:     db "/fyd/usuario/downloads", 0
 pasta_area_trabalho: db "/fyd/usuario/area_trabalho", 0
 pasta_projetos:      db "/fyd/usuario/projetos", 0
 
-; ═══════ SEGURANÇA E DADOS ═══════
+; ═══════ SEGURANCA E DADOS ═══════
 pasta_secure:        db "/fyd/secure", 0
 pasta_contas:        db "/fyd/secure/contas", 0
 pasta_dados:         db "/fyd/dados", 0
@@ -67,9 +69,9 @@ pasta_pentest:       db "/fyd/pentest", 0
 pasta_relatorios:    db "/fyd/pentest/relatorios", 0
 pasta_capturas:      db "/fyd/pentest/capturas", 0
 
-; ═══════ LISTA MESTRE DE INICIALIZAÇÃO ═══════
+; ═══════ LISTA MESTRE DE INICIALIZACAO ═══════
 lista_pastas:
-    dq pasta_raiz
+    dq pasta_raiz, pasta_tmp, pasta_dev
     dq pasta_disco, pasta_disco_f1, pasta_disco_f2
     dq pasta_usb, pasta_usb_u1, pasta_usb_u2
     dq pasta_midia, pasta_rede
@@ -84,26 +86,26 @@ lista_pastas:
     dq pasta_relatorios, pasta_capturas
     dq 0    ; FIM DA LISTA
 
-; Mensagens (ASCII puro compatível com VGA e VESA)
+; Mensagens (ASCII puro compativel com VGA e VESA)
 msg_criando:         db "[*] Montando arvore de diretorios /fyd...", 10, 0
 msg_ok_prefixo:      db "  [OK] ", 0
 msg_ja_existe:       db " (ativo)", 0
-msg_erro:            db "  [ERRO] Falha ao criar: ", 0
-msg_concluido:       db "[OK] Estrutura /fyd pronta! Diretorio inicial: /fyd/usuario", 10, 0
+msg_erro:            db "  [ERRO] Falha ao registrar: ", 0
+msg_concluido:       db "[OK] Estrutura /fyd pronta! CWD inicial: /fyd/usuario", 10, 0
 msg_arvore:          db "ESTRUTURA DE DIRETORIOS DO SISTEMA (/fyd)", 10, \
                         "-----------------------------------------", 10, 0
 
 section .bss
-tabela_diretorios:   resq MAX_DIRETORIOS   ; Ponteiros para os diretórios ativos
-total_diretorios:    resq 1                ; Quantidade registrada
-diretorio_atual:     resb 128              ; CWD atual do FydelTerm (ex: "/fyd/usuario")
+tabela_diretorios:   resq MAX_DIRETORIOS   ; Ponteiros para os diretorios ativos
+total_diretorios:    resq 1                ; Quantidade total registrada
+diretorio_atual:     resb 128              ; Diretorio corrente (CWD) da sessao
 
 section .text
 
-; ==========================================
+; ============================================================================
 ; CONSTRUIR ESTRUTURA NO BOOT
-; Chamado pelo kernel antes de abrir o FydelTerm ou GUI
-; ==========================================
+; Deve ser chamada pelo kernel antes de exibir o menu [1] / [2]
+; ============================================================================
 construir_estrutura_sistema:
     push rax
     push rbx
@@ -113,7 +115,6 @@ construir_estrutura_sistema:
     lea rsi, [rel msg_criando]
     call print_string
 
-    ; Usa RBX para percorrer lista_pastas sem conflitar com RSI
     lea rbx, [rel lista_pastas]
 
 .loop_proxima:
@@ -121,12 +122,10 @@ construir_estrutura_sistema:
     test rdi, rdi
     jz .concluido
 
-    ; Verifica se já está registrada na tabela
     call fs_caminho_existe
     test rax, rax
     jnz .ja_tem
 
-    ; Registra/cria o diretório
     call fs_criar_diretorio
     test rax, rax
     jz .falha
@@ -160,7 +159,7 @@ construir_estrutura_sistema:
     jmp .loop_proxima
 
 .concluido:
-    ; Define o diretório inicial da sessão como "/fyd/usuario"
+    ; Define o diretorio inicial da sessao como "/fyd/usuario"
     lea rsi, [rel pasta_home]
     lea rdi, [rel diretorio_atual]
 .copia_cwd:
@@ -178,9 +177,9 @@ construir_estrutura_sistema:
     pop rax
     ret
 
-; ==========================================
-; FS_CAMINHO_EXISTE: rdi = ponteiro string -> rax = 1 existe, 0 não
-; ==========================================
+; ============================================================================
+; FS_CAMINHO_EXISTE: rdi = ponteiro string -> rax = 1 existe, 0 nao
+; ============================================================================
 fs_caminho_existe:
     push rbx
     push rcx
@@ -218,9 +217,9 @@ fs_caminho_existe:
     pop rbx
     ret
 
-; ==========================================
+; ============================================================================
 ; FS_CRIAR_DIRETORIO: rdi = ponteiro string -> rax = 1 sucesso, 0 falha
-; ==========================================
+; ============================================================================
 fs_criar_diretorio:
     push rbx
     push rcx
@@ -244,9 +243,9 @@ fs_criar_diretorio:
     pop rbx
     ret
 
-; ==========================================
-; INTERFACE PARA C (exec.c — Gerenciador de Arquivos)
-; ==========================================
+; ============================================================================
+; INTERFACE PARA C (exec.c — Gerenciador de Arquivos Grafico)
+; ============================================================================
 fs_obter_lista_pastas:
     lea rax, [rel tabela_diretorios]
     ret
@@ -255,9 +254,9 @@ fs_total_pastas:
     mov rax, [rel total_diretorios]
     ret
 
-; ==========================================
+; ============================================================================
 ; LISTAR ESTRUTURA (Comando "listar" / "arvore" no FydelTerm)
-; ==========================================
+; ============================================================================
 listar_estrutura:
     push rax
     push rbx
@@ -279,7 +278,6 @@ listar_estrutura:
     mov rdi, [rbx]
     push rcx
 
-    ; Calcula profundidade pela quantidade de '/'
     call contar_barras
     mov rcx, rax
 .indent:
@@ -317,9 +315,9 @@ listar_estrutura:
     pop rax
     ret
 
-; ==========================================
-; UTILITÁRIOS INTERNOS
-; ==========================================
+; ============================================================================
+; UTILITARIOS INTERNOS
+; ============================================================================
 contar_barras:
     xor rax, rax
     mov rsi, rdi
