@@ -42,6 +42,10 @@ extern void     ws_atualizar_cursor(void);
 extern uint64_t rede_ler_status_link(void);
 extern uint64_t timer_ler_ticks(void);
 
+extern uint64_t bt_ler_status(void);
+extern uint64_t audio_ler_status(void);
+extern uint64_t detectar_disco(uint64_t numero_disco);
+
 /* Modos de exibição da Janela Principal */
 enum {
     MODO_JANELA_SISTEMA  = 1,
@@ -462,11 +466,13 @@ static void escrever_texto_centralizado(const char *texto, int centro_x, int y, 
 }
 
 /* ============================================================================
- * SYSTEM TRAY (CANTO INFERIOR DIREITO: REDE CABO + WIFI + HORA/DATA RTC)
+ * SYSTEM TRAY (CANTO INFERIOR DIREITO: REDE + WIFI + BT + AUDIO + DISCO + RTC)
  * ============================================================================ */
-#define SYSTRAY_LARGURA 168
+#define SYSTRAY_LARGURA 248
 
-static void desenhar_systray(int L, int taskbar_y, int taskbar_h, const RtcDataHora *dt, int mx, int my) {
+static void desenhar_systray(int L, int taskbar_y, int taskbar_h,
+                             int disco_ok, int bt_status, int audio_status,
+                             const RtcDataHora *dt, int mx, int my) {
     int tray_w = SYSTRAY_LARGURA;
     int tray_h = taskbar_h - 6;
     int tray_x = L - tray_w - 8;
@@ -479,23 +485,46 @@ static void desenhar_systray(int L, int taskbar_y, int taskbar_h, const RtcDataH
         hover_tray ? COR_CIANO_NEON : COR_BORDA_SUTIL,
         hover_tray ? COR_HOVER : COR_PAINEL_SEC);
 
-    /* 1. Ícone Rede Cabeada (icone_ethernet) + LED de status link real */
-    int eth_x = tray_x + 8;
     int ico_y = tray_y + 6;
+
+    /* 1. Rede Cabeada (icone_ethernet) */
+    int eth_x = tray_x + 8;
     int link_ativo = (rede_ler_status_link() != 0);
     gpu_desenhar_icone(icone_ethernet, eth_x, ico_y, ICONE_TAM, ICONE_TAM);
     desenhar_retangulo_solido(eth_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5,
         link_ativo ? COR_VERDE_NEON : COR_ROXO_CLARO);
 
-    /* 2. Ícone Rede Wi-Fi (icone_wifi) */
+    /* 2. Rede Wi-Fi (icone_wifi) */
     int wifi_x = eth_x + 26;
     gpu_desenhar_icone(icone_wifi, wifi_x, ico_y, ICONE_TAM, ICONE_TAM);
 
-    /* Separador vertical antes do Relógio/Data */
-    int sep_x = wifi_x + 26;
+    /* 3. Bluetooth (icone_bluetooth) -> 0: ausente, 1: ativo, 2: conectado */
+    int bt_x = wifi_x + 26;
+    gpu_desenhar_icone(icone_bluetooth, bt_x, ico_y, ICONE_TAM, ICONE_TAM);
+    uint32_t cor_led_bt = COR_BORDA_SUTIL;
+    if (bt_status == 2)      cor_led_bt = COR_VERDE_NEON;
+    else if (bt_status == 1) cor_led_bt = COR_CIANO_NEON;
+    desenhar_retangulo_solido(bt_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5, cor_led_bt);
+
+    /* 4. Audio (icone_audio) -> 0: sem placa, 1: ativo, 2: mudo */
+    int aud_x = bt_x + 26;
+    gpu_desenhar_icone(icone_audio, aud_x, ico_y, ICONE_TAM, ICONE_TAM);
+    uint32_t cor_led_aud = COR_BORDA_SUTIL;
+    if (audio_status == 1)      cor_led_aud = COR_VERDE_NEON;
+    else if (audio_status == 2) cor_led_aud = COR_VERMELHO_ALERTA;
+    desenhar_retangulo_solido(aud_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5, cor_led_aud);
+
+    /* 5. Disco ATA/IDE (icone_disco) */
+    int disk_x = aud_x + 26;
+    gpu_desenhar_icone(icone_disco, disk_x, ico_y, ICONE_TAM, ICONE_TAM);
+    desenhar_retangulo_solido(disk_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5,
+        disco_ok ? COR_VERDE_NEON : COR_VERMELHO_ALERTA);
+
+    /* Separador vertical antes do Relogio/Data */
+    int sep_x = disk_x + 26;
     desenhar_retangulo_solido(sep_x, tray_y + 5, 1, tray_h - 10, COR_BORDA_SUTIL);
 
-    /* 3. Relógio Digital (HH:MM) + Data (DD/MM/20YY) estilo Windows */
+    /* 6. Relogio Digital (HH:MM) + Data (DD/MM/20YY) */
     char hora_str[8];
     char data_str[12];
 
@@ -517,7 +546,6 @@ static void desenhar_systray(int L, int taskbar_y, int taskbar_h, const RtcDataH
     gpu_escrever_texto(hora_str, relogio_x + 20, tray_y + 2, COR_TEXTO_BRANCO);
     gpu_escrever_texto(data_str, relogio_x, tray_y + 16, COR_TEXTO_SUAVE);
 }
-
 /* ============================================================================
  * DRIVER DE TECLADO PS/2 PARA INTERFACE GRÁFICA
  * ============================================================================ */
@@ -847,6 +875,11 @@ static int exibir_desktop_grafico(int L, int A) {
     int btn_ant        = 0;
     int hover_ant      = -1;
 
+    /* Cache de estado dos controladores de hardware (Disco, Bluetooth, Audio) */
+    int disco_detectado = (detectar_disco(0) != 0);
+    int bt_estado       = (int)bt_ler_status();
+    int audio_estado    = (int)audio_ler_status();
+
     /* Controle de tempo real do RTC / Systray */
     RtcDataHora dt_atual;
     rtc_ler_agora(&dt_atual);
@@ -870,13 +903,19 @@ static int exibir_desktop_grafico(int L, int A) {
         int mx, my, mb;
         obter_estado_mouse(&mx, &my, &mb);
 
-        /* Atualiza relógio RTC periodicamente (a cada ~100 ticks ou mudança de minuto) */
+        /* Atualiza relógio RTC e status de Bluetooth/Audio periodicamente */
         uint64_t ticks_agora = timer_ler_ticks();
         if ((ticks_agora - ticks_ant) >= 100) {
             ticks_ant = ticks_agora;
             rtc_ler_agora(&dt_atual);
-            if (dt_atual.min != min_anterior) {
+
+            int novo_bt    = (int)bt_ler_status();
+            int novo_audio = (int)audio_ler_status();
+
+            if (dt_atual.min != min_anterior || novo_bt != bt_estado || novo_audio != audio_estado) {
                 min_anterior = dt_atual.min;
+                bt_estado    = novo_bt;
+                audio_estado = novo_audio;
                 precisa_redesenhar = 1;
             }
         }
@@ -932,7 +971,7 @@ static int exibir_desktop_grafico(int L, int A) {
                     titulo_win = "Central de Aplicativos";
                 } else if (modo_janela == MODO_JANELA_CONFIG) {
                     icone_win  = icone_config;
-                    titulo_win = "Configuracoes de Rede & Sistema";
+                    titulo_win = "Dispositivos, Rede & Sistema";
                 }
 
                 gpu_desenhar_icone(icone_win, win_x + 10, win_y + 7, ICONE_TAM, ICONE_TAM);
@@ -987,17 +1026,26 @@ static int exibir_desktop_grafico(int L, int A) {
                     gpu_desenhar_icone(icone_imagem, cx, cy - 2, ICONE_TAM, ICONE_TAM);
                     gpu_escrever_texto("Visualizador de Imagens (/fyd/usuario/imagens)", cx + 28, cy, COR_TEXTO_BRANCO);
                 } else if (modo_janela == MODO_JANELA_CONFIG) {
-                    gpu_escrever_texto("Status de Rede, Wi-Fi & Tema (/fyd/config):", cx, cy, COR_CIANO_NEON);
-                    cy += 28;
+                    gpu_escrever_texto("Dispositivos & Hardware (/fyd/config):", cx, cy, COR_CIANO_NEON);
+                    cy += 26;
                     gpu_desenhar_icone(icone_ethernet, cx, cy - 2, ICONE_TAM, ICONE_TAM);
                     gpu_escrever_texto(rede_ler_status_link() ? "Rede Cabeada (E1000): CONECTADA" : "Rede Cabeada (E1000): Aguardando cabo",
                                        cx + 28, cy, rede_ler_status_link() ? COR_VERDE_NEON : COR_TEXTO_SUAVE);
-                    cy += 28;
+                    cy += 26;
                     gpu_desenhar_icone(icone_wifi, cx, cy - 2, ICONE_TAM, ICONE_TAM);
                     gpu_escrever_texto("Controlador Wi-Fi: Pronto (/fyd/rede)", cx + 28, cy, COR_TEXTO_BRANCO);
-                    cy += 28;
-                    gpu_desenhar_icone(icone_sistema, cx, cy - 2, ICONE_TAM, ICONE_TAM);
-                    gpu_escrever_texto("Tema Ativo: Cyberpunk Neon (/fyd/temas)", cx + 28, cy, COR_ROXO_CLARO);
+                    cy += 26;
+                    gpu_desenhar_icone(icone_bluetooth, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto(bt_estado == 2 ? "Bluetooth HCI: Conectado" : (bt_estado == 1 ? "Bluetooth HCI: Ativo" : "Bluetooth HCI: Nao detectado"),
+                                       cx + 28, cy, bt_estado ? COR_CIANO_NEON : COR_TEXTO_SUAVE);
+                    cy += 26;
+                    gpu_desenhar_icone(icone_audio, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto(audio_estado == 1 ? "Audio (AC97/HDA): Ativo" : (audio_estado == 2 ? "Audio: MUDO" : "Audio: Nao detectado"),
+                                       cx + 28, cy, audio_estado == 1 ? COR_VERDE_NEON : (audio_estado == 2 ? COR_VERMELHO_ALERTA : COR_TEXTO_SUAVE));
+                    cy += 26;
+                    gpu_desenhar_icone(icone_disco, cx, cy - 2, ICONE_TAM, ICONE_TAM);
+                    gpu_escrever_texto(disco_detectado ? "Disco ATA Primario (0x1F0): Online" : "Disco ATA: Offline",
+                                       cx + 28, cy, disco_detectado ? COR_VERDE_NEON : COR_VERMELHO_ALERTA);
                 }
             }
 
@@ -1022,8 +1070,10 @@ static int exibir_desktop_grafico(int L, int A) {
             else if (modo_janela == MODO_JANELA_CONFIG) rotulo_aba = "Configuracoes";
             gpu_escrever_texto(rotulo_aba, tab_x + 16, btn_f_y + 8, COR_TEXTO_BRANCO);
 
-            /* System Tray no canto direito (Rede Cabo + Wi-Fi + Hora/Data) */
-            desenhar_systray(L, taskbar_y, taskbar_h, &dt_atual, mx, my);
+            /* System Tray no canto direito (Ethernet + Wi-Fi + BT + Audio + Disco + RTC) */
+            bt_estado    = (int)bt_ler_status();
+            audio_estado = (int)audio_ler_status();
+            desenhar_systray(L, taskbar_y, taskbar_h, disco_detectado, bt_estado, audio_estado, &dt_atual, mx, my);
 
             /* Atalho rápido FydelTerm à esquerda do System Tray */
             int term_btn_w = 132;
@@ -1124,7 +1174,7 @@ static int exibir_desktop_grafico(int L, int A) {
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            /* 4. Clique no System Tray (abre painel de Rede & Configurações) */
+            /* 4. Clique no System Tray (abre painel de Rede, BT, Audio & Disco) */
             else if (ponto_no_retangulo(mx, my, tray_x, btn_f_y, SYSTRAY_LARGURA, 32)) {
                 modo_janela = MODO_JANELA_CONFIG;
                 janela_aberta = 1;
