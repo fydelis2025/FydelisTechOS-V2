@@ -1,0 +1,38 @@
+name: Compilar FydelisTech OS
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch: # Permite rodar manualmente clicando em "Run workflow"
+
+jobs:
+  build-os:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar codigo do repositorio
+        uses: actions/checkout@v4
+
+      - name: Instalar toolchain (NASM, GCC, Python, GRUB/Xorriso)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm python3 python3-pil python3-cairosvg xorriso grub-pc-bin grub-common mtools
+
+      - name: Gerar assets (icones.h / fontes_ui.h) e compilar Kernel
+        working-directory: src/kernel
+        run: |
+          if grep -q "assets:" Makefile; then
+            make assets
+          fi
+          make clean
+          make
+
+      - name: Publicar ISO / Binario compilado para download
+        uses: actions/upload-artifact@v4
+        with:
+          name: FydelisTechOS-build
+          path: |
+            **/*.iso
+            **/*.bin
+            **/*.elf
+          if-no-files-found: warn
