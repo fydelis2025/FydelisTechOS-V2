@@ -1051,6 +1051,10 @@ static int exibir_desktop_grafico(int L, int A) {
     int arrastando     = 0;
     int drag_offset_x  = 0;
     int drag_offset_y  = 0;
+    //funções da calculadora
+    int arrastando_calc   = 0;
+    int calc_drag_off_x   = 0;
+    int calc_drag_off_y   = 0;
 
     /* Estado da Barra de Tarefas & Botao "F" */
     int taskbar_h      = 38;
@@ -1342,6 +1346,28 @@ static int exibir_desktop_grafico(int L, int A) {
                 arrastando = 0;
                 precisa_redesenhar = 1;
             }
+
+            /* Arraste contínuo da Calculadora */
+        if (arrastando_calc) {
+            if (botao_esq_pressionado) {
+                int nx = mx - calc_drag_off_x;
+                int ny = my - calc_drag_off_y;
+
+                if (nx < 0) nx = 0;
+                if (nx + app_calculadora.w > L) nx = L - app_calculadora.w;
+                if (ny < 34) ny = 34;
+                if (ny + app_calculadora.h > taskbar_y) ny = taskbar_y - app_calculadora.h;
+
+                if (nx != app_calculadora.x || ny != app_calculadora.y) {
+                    app_calculadora.x = nx;
+                    app_calculadora.y = ny;
+                    precisa_redesenhar = 1;
+                }
+            } else {
+                arrastando_calc = 0;
+                precisa_redesenhar = 1;
+            }
+        }
         }
 
         /* Tratamento de cliques */
