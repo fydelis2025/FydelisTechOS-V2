@@ -105,6 +105,7 @@ static const ItemMenuIniciar itens_menu[] = {
     { "Aplicativos",     icone_iniciar,       0, 2 },
     { "FydelTerm",       icone_terminal,      0, 3 },
     { "Agenda",          icone_agenda,        0, 4 },
+    { "Calculadora",     icone_config,        0, 8 },
     /* Coluna 1: SISTEMA & CONFIGURAÇÕES */
     { "Painel Sistema",  icone_sistema,       1, 5 },
     { "Configuracoes",   icone_config,        1, 6 },
