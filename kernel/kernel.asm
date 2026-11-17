@@ -33,6 +33,9 @@ extern bt_detectar_placa
 extern bt_inicializar
 extern inicializar_nic_mmio
 
+extern construir_estrutura_sistema
+extern hosts_inicializar
+
 global bytes_para_gb
 global _entry16
 global start
@@ -355,7 +358,8 @@ start:
     ; FASE 4 - ESTRUTURA DE DIRETORIOS (/fyd)
     ; ======================================
     call    construir_estrutura_sistema
-
+    ; Inicializa a tabela de nomes e registra /fyd/rede/cfg/hosts.fcfg
+    call hosts_inicializar
     ; ======================================
     ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
     ; ======================================
