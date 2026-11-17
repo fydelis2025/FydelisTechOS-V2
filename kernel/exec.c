@@ -4,7 +4,7 @@
  * Integrado com: icones.h, fontes_ui.h, estrutura.asm, energia.asm e Systray
  * ============================================================================ */
 #include "../apps/apps.h"
-
+#include "../include/fyd_formatos.h"
 #include "gpu.h"
 #include "icones.h"
 #include "fontes_ui.h"
@@ -54,6 +54,8 @@ extern uint64_t detectar_disco(uint64_t numero_disco);
 extern uint64_t obter_tamanho_disco(void);
 //rede
 
+//Extensões fyd
+extern const char *fs_ler_config_padrao(void);
 
 /* Modos de exibição da Janela Principal */
 enum {
@@ -1031,13 +1033,24 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
 static int exibir_desktop_grafico(int L, int A) {
     char res_buf[48];
     char tmp[16];
-    
+
     /* Inicializa hardware PCI antes de ler o status para o Systray */
     audio_init();
     if (bt_detectar_placa() != 0) {
         bt_inicializar();
     }
-        
+
+    /* Lê o fuso horário configurado em /fyd/config/sistema.fcfg (padrão: -3) */
+    char tz_buf[8];
+    int offset_fuso = -3;
+    if (fyd_cfg_ler_chave(fs_ler_config_padrao(), "timezone", tz_buf, sizeof(tz_buf)) == 0) {
+        if (tz_buf[0] == '-' && tz_buf[1] >= '0' && tz_buf[1] <= '9') {
+            offset_fuso = -(tz_buf[1] - '0');
+        } else if (tz_buf[0] >= '0' && tz_buf[0] <= '9') {
+            offset_fuso = (tz_buf[0] - '0');
+        }
+    }
+
     /* Estado da janela principal */
     int win_w = (L * 64) / 100;
     if (win_w < 500) win_w = 500;
@@ -1051,10 +1064,11 @@ static int exibir_desktop_grafico(int L, int A) {
     int arrastando     = 0;
     int drag_offset_x  = 0;
     int drag_offset_y  = 0;
-    //funções da calculadora
-    int arrastando_calc   = 0;
-    int calc_drag_off_x   = 0;
-    int calc_drag_off_y   = 0;
+
+    /* Estado de arraste da Calculadora */
+    int arrastando_calc = 0;
+    int calc_drag_off_x = 0;
+    int calc_drag_off_y = 0;
 
     /* Estado da Barra de Tarefas & Botao "F" */
     int taskbar_h      = 38;
@@ -1067,7 +1081,7 @@ static int exibir_desktop_grafico(int L, int A) {
     int menu_aberto    = 0;
     int menu_x         = 8;
     int menu_w         = 410;
-    int menu_h         = 264;
+    int menu_h         = 304; /* Proporcional para 5 itens na Coluna 0 */
     int menu_y         = taskbar_y - menu_h - 4;
 
     int precisa_redesenhar = 1;
@@ -1079,9 +1093,14 @@ static int exibir_desktop_grafico(int L, int A) {
     int bt_estado       = (int)bt_ler_status();
     int audio_estado    = (int)audio_ler_status();
 
-    /* Controle de tempo real do RTC / Systray */
+    /* Controle de tempo real do RTC / Systray com fuso horário do .fcfg */
     RtcDataHora dt_atual;
     rtc_ler_agora(&dt_atual);
+    int hora_local = (int)dt_atual.hora + offset_fuso;
+    if (hora_local < 0)   hora_local += 24;
+    if (hora_local >= 24) hora_local -= 24;
+    dt_atual.hora = (uint8_t)hora_local;
+
     uint8_t min_anterior = dt_atual.min;
     uint64_t ticks_ant   = timer_ler_ticks();
 
@@ -1113,6 +1132,10 @@ static int exibir_desktop_grafico(int L, int A) {
         if ((ticks_agora - ticks_ant) >= 100) {
             ticks_ant = ticks_agora;
             rtc_ler_agora(&dt_atual);
+            hora_local = (int)dt_atual.hora + offset_fuso;
+            if (hora_local < 0)   hora_local += 24;
+            if (hora_local >= 24) hora_local -= 24;
+            dt_atual.hora = (uint8_t)hora_local;
 
             int novo_bt    = (int)bt_ler_status();
             int novo_audio = (int)audio_ler_status();
@@ -1326,7 +1349,7 @@ static int exibir_desktop_grafico(int L, int A) {
         int clique_agora = botao_esq_pressionado && !(btn_ant & 0x01);
         btn_ant = mb;
 
-        /* Arraste contínuo da janela */
+        /* Arraste contínuo da janela principal */
         if (arrastando) {
             if (botao_esq_pressionado) {
                 int novo_x = mx - drag_offset_x;
@@ -1346,8 +1369,9 @@ static int exibir_desktop_grafico(int L, int A) {
                 arrastando = 0;
                 precisa_redesenhar = 1;
             }
+        }
 
-            /* Arraste contínuo da Calculadora */
+        /* Arraste contínuo da Calculadora (independente da janela principal!) */
         if (arrastando_calc) {
             if (botao_esq_pressionado) {
                 int nx = mx - calc_drag_off_x;
@@ -1367,7 +1391,6 @@ static int exibir_desktop_grafico(int L, int A) {
                 arrastando_calc = 0;
                 precisa_redesenhar = 1;
             }
-        }
         }
 
         /* Tratamento de cliques */
@@ -1421,7 +1444,6 @@ static int exibir_desktop_grafico(int L, int A) {
                     }
                 }
             }
-
             /* 2.5 Cliques na janela da Calculadora (prioridade por estar em primeiro plano) */
             else if (app_calculadora.aberta &&
                      ponto_no_retangulo(mx, my, app_calculadora.x, app_calculadora.y,
@@ -1511,8 +1533,18 @@ static int exibir_desktop_grafico(int L, int A) {
         }
 
         char tecla = ler_tecla_ps2();
-        if (tecla == 27) {
-            return 0;
+        if (tecla != 0) {
+            if (app_calculadora.aberta) {
+                if (tecla == 27) {
+                    app_calculadora.aberta = 0;
+                    arrastando_calc = 0;
+                } else {
+                    app_calculadora.on_key(tecla);
+                }
+                precisa_redesenhar = 1;
+            } else if (tecla == 27) {
+                return 0;
+            }
         }
 
         __asm__ volatile ("pause");
