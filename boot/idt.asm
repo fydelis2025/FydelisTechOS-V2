@@ -1,5 +1,5 @@
 ; ============================================================================
-; IDT.ASM — Tabela Completa de 32 Excecoes da CPU + IRQ1 (Teclado)
+; IDT.ASM — Tabela Completa de 32 Excecoes + IRQ0 (Timer) + IRQ1 (Teclado) + IRQ12 (Mouse)
 ; FydelisTech OS v4.2 — Conectado ao Kernel Panic & FydLog
 ; Salvador - Bahia
 ; ============================================================================
@@ -22,11 +22,28 @@ idt_table:
 section .text
 global idt_init
 extern kernel_panic_handler     ; Handler visual e de log em kernel/panic.c
-extern keyboard_handler         ; Tratador de interrupcao do teclado (IRQ1)
+extern keyboard_handler         ; Tratador de interrupcao do teclado (IRQ1 - Vetor 33)
 
-; Stub local para saltar para o handler do teclado
+; Stub local para saltar para o handler do teclado (Vetor 33)
 keyboard_stub:
     jmp keyboard_handler
+
+; Stub de Timer (IRQ0 - Vetor 32): acorda o HLT e envia EOI ao PIC Master
+irq0_timer_stub:
+    push rax
+    mov al, 0x20
+    out 0x20, al
+    pop rax
+    iretq
+
+; Stub de Mouse PS/2 (IRQ12 - Vetor 44): acorda o HLT e envia EOI ao PIC Slave + Master
+irq12_mouse_stub:
+    push rax
+    mov al, 0x20
+    out 0xA0, al                ; EOI PIC Slave (IRQ 8..15)
+    out 0x20, al                ; EOI PIC Master
+    pop rax
+    iretq
 
 ; ============================================================================
 ; MACROS — Gerar Stubs de Excecao x86_64
@@ -56,7 +73,7 @@ ISR_SEM_ERRO 2   ; — Interrupcao NMI
 ISR_SEM_ERRO 3   ; #BP — Ponto de Parada
 ISR_SEM_ERRO 4   ; #OF — Estouro
 ISR_SEM_ERRO 5   ; #BR — Limite Excedido
-ISR_SEM_ERRO 6   ; #UD — Instrucao Invalida (NAO tem error_code na CPU!)
+ISR_SEM_ERRO 6   ; #UD — Instrucao Invalida
 ISR_SEM_ERRO 7   ; #NM — Coprocessador Indisponivel
 ISR_COM_ERRO 8   ; #DF — Falha Dupla
 ISR_SEM_ERRO 9   ; — Reservado
@@ -70,29 +87,21 @@ ISR_SEM_ERRO 16  ; #MF — Erro de Matematica
 ISR_COM_ERRO 17  ; #AC — Verificacao de Alinhamento
 ISR_SEM_ERRO 18  ; #MC — Erro de Maquina
 ISR_SEM_ERRO 19  ; #XF — Excecao SIMD
-ISR_SEM_ERRO 20  ; — Reservado
-ISR_SEM_ERRO 21  ; — Reservado
-ISR_SEM_ERRO 22  ; — Reservado
-ISR_SEM_ERRO 23  ; — Reservado
-ISR_SEM_ERRO 24  ; — Reservado
-ISR_SEM_ERRO 25  ; — Reservado
-ISR_SEM_ERRO 26  ; — Reservado
-ISR_SEM_ERRO 27  ; — Reservado
-ISR_SEM_ERRO 28  ; — Reservado
-ISR_SEM_ERRO 29  ; — Reservado
-ISR_SEM_ERRO 30  ; — Reservado
-ISR_SEM_ERRO 31  ; — Reservado
+ISR_SEM_ERRO 20
+ISR_SEM_ERRO 21
+ISR_SEM_ERRO 22
+ISR_SEM_ERRO 23
+ISR_SEM_ERRO 24
+ISR_SEM_ERRO 25
+ISR_SEM_ERRO 26
+ISR_SEM_ERRO 27
+ISR_SEM_ERRO 28
+ISR_SEM_ERRO 29
+ISR_SEM_ERRO 30
+ISR_SEM_ERRO 31
 
 ; ============================================================================
 ; TRATADOR COMUM — Captura contexto da CPU e chama kernel_panic_handler
-; Pilha apos push r15..rax (15 regs * 8 = 120 bytes):
-;   [rsp + 120] = vetor_id
-;   [rsp + 128] = error_code
-;   [rsp + 136] = rip
-;   [rsp + 144] = cs
-;   [rsp + 152] = rflags
-;   [rsp + 160] = rsp_original
-;   [rsp + 168] = ss
 ; ============================================================================
 isr_comum:
     cli
@@ -113,7 +122,6 @@ isr_comum:
     push rbx
     push rax
 
-    ; Argumentos ABI System V x86_64 para kernel_panic_handler:
     mov rdi, [rsp + 120]        ; RDI = vetor_id
     mov rsi, [rsp + 128]        ; RSI = error_code
     mov rdx, [rsp + 136]        ; RDX = rip
@@ -139,11 +147,17 @@ idt_init:
 
     xor rcx, rcx
 .loop:
+    cmp rcx, 32
+    jl .carrega_excecao
+
+    cmp rcx, 32
+    je .carrega_timer
+
     cmp rcx, 33
     je .carrega_teclado
 
-    cmp rcx, 32
-    jl .carrega_excecao
+    cmp rcx, 44
+    je .carrega_mouse
 
     xor rdx, rdx
     jmp .escreve_entrada
@@ -153,8 +167,16 @@ idt_init:
     mov rdx, [rsi + rcx * 8]
     jmp .escreve_entrada
 
+.carrega_timer:
+    lea rdx, [rel irq0_timer_stub]
+    jmp .escreve_entrada
+
 .carrega_teclado:
-    mov rdx, keyboard_stub
+    lea rdx, [rel keyboard_stub]
+    jmp .escreve_entrada
+
+.carrega_mouse:
+    lea rdx, [rel irq12_mouse_stub]
     jmp .escreve_entrada
 
 .escreve_entrada:
@@ -163,10 +185,13 @@ idt_init:
     shl rbx, 4
     add rax, rbx
 
+    test rdx, rdx
+    jz .entrada_nula
+
     mov word [rax], dx
     mov word [rax + 2], 0x08
     mov byte [rax + 4], 0
-    mov byte [rax + 5], 0x8E
+    mov byte [rax + 5], 0x8E    ; Presente, Ring 0, Interrupt Gate 64-bit
 
     shr rdx, 16
     mov word [rax + 6], dx
@@ -174,7 +199,13 @@ idt_init:
     shr rdx, 16
     mov dword [rax + 8], edx
     mov dword [rax + 12], 0
+    jmp .proximo
 
+.entrada_nula:
+    mov qword [rax], 0
+    mov qword [rax + 8], 0
+
+.proximo:
     inc rcx
     cmp rcx, IDT_ENTRIES
     jl .loop
