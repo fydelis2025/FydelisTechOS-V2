@@ -151,7 +151,7 @@ OBJS = \
     ../idioma/idioma.o      \
     ../idioma/pt_br.o       \
     ../apps/acessorios/calculadora.o \
-    ../apps/acessorios/visualizador_logs.o
+    ../apps/sistema/visualizador_logs.o
 
 # Dependencias de header geradas pelo GCC (-MMD)
 -include $(OBJS:.o=.d)
