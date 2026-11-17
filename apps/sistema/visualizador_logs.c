@@ -2,11 +2,6 @@
 #include "../apps.h"
 #include "../../include/fydlog.h"
 
-/* Primitivas gráficas exportadas pelo kernel/exec.c */
-extern void desenhar_retangulo_solido(int x, int y, int w, int h, uint32_t cor);
-extern void desenhar_caixa_com_borda(int x, int y, int w, int h, int borda, uint32_t cor_borda, uint32_t cor_fundo);
-extern void gpu_escrever_texto(const char *texto, int x, int y, uint32_t cor);
-
 /* Paleta Cyberpunk Purple & Neon */
 #define LOG_COR_FUNDO      0xFF1A0B36
 #define LOG_COR_BARRA      0xFF281352
@@ -57,16 +52,17 @@ static void vlog_on_click(int rel_x, int rel_y);
 static void vlog_on_key(char tecla);
 
 FydelisApp app_visualizador_logs = {
-    .titulo   = "FydLog - /fyd/dados/logs/sistema.flog",
-    .x        = 180,
-    .y        = 95,
-    .w        = 600,
-    .h        = 360,
-    .aberta   = 0,
-    .abrir    = vlog_abrir,
-    .desenhar = vlog_desenhar,
-    .on_click = vlog_on_click,
-    .on_key   = vlog_on_key
+    .nome      = "FydLog - /fyd/dados/logs/sistema.flog",
+    .categoria = CAT_SISTEMA,
+    .aberta    = 0,
+    .x         = 180,
+    .y         = 95,
+    .w         = 600,
+    .h         = 360,
+    .abrir     = vlog_abrir,
+    .desenhar  = vlog_desenhar,
+    .on_click  = vlog_on_click,
+    .on_key    = vlog_on_key
 };
 
 static void vlog_abrir(void) {
@@ -85,42 +81,47 @@ static void vlog_desenhar(void) {
     int h = app_visualizador_logs.h;
 
     /* Moldura e Barra de Título */
-    desenhar_caixa_com_borda(x, y, w, h, 2, LOG_COR_BORDA, LOG_COR_FUNDO);
-    desenhar_retangulo_solido(x + 2, y + 2, w - 4, 26, LOG_COR_BARRA);
-    gpu_escrever_texto(app_visualizador_logs.titulo, x + 10, y + 7, LOG_COR_CIANO);
+    gui_retangulo(x, y, w, h, LOG_COR_FUNDO);
+    gui_borda(x, y, w, h, LOG_COR_BORDA);
+    gui_retangulo(x + 2, y + 2, w - 4, 26, LOG_COR_BARRA);
+    gui_texto(x + 10, y + 7, app_visualizador_logs.nome, LOG_COR_CIANO);
 
     /* Botão Fechar [X] */
-    desenhar_retangulo_solido(x + w - 24, y + 4, 20, 20, LOG_COR_VERMELHO);
-    gpu_escrever_texto("X", x + w - 18, y + 6, LOG_COR_TEXTO);
+    gui_retangulo(x + w - 24, y + 4, 20, 20, LOG_COR_VERMELHO);
+    gui_texto(x + w - 18, y + 6, "X", LOG_COR_TEXTO);
 
-    /* Barra de ferramentas superior (Subir, Descer, Atualizar, Testar Log) */
+    /* Barra de ferramentas superior */
     int tb_y = y + 34;
-    desenhar_caixa_com_borda(x + 12, tb_y, 76, 22, 1, LOG_COR_BORDA, LOG_COR_BTN);
-    gpu_escrever_texto("Subir", x + 28, tb_y + 4, LOG_COR_TEXTO);
+    gui_retangulo(x + 12, tb_y, 76, 22, LOG_COR_BTN);
+    gui_borda(x + 12, tb_y, 76, 22, LOG_COR_BORDA);
+    gui_texto(x + 28, tb_y + 4, "Subir", LOG_COR_TEXTO);
 
-    desenhar_caixa_com_borda(x + 96, tb_y, 82, 22, 1, LOG_COR_BORDA, LOG_COR_BTN);
-    gpu_escrever_texto("Descer", x + 111, tb_y + 4, LOG_COR_TEXTO);
+    gui_retangulo(x + 96, tb_y, 82, 22, LOG_COR_BTN);
+    gui_borda(x + 96, tb_y, 82, 22, LOG_COR_BORDA);
+    gui_texto(x + 111, tb_y + 4, "Descer", LOG_COR_TEXTO);
 
-    desenhar_caixa_com_borda(x + 186, tb_y, 96, 22, 1, LOG_COR_CIANO, LOG_COR_BTN);
-    gpu_escrever_texto("Atualizar", x + 198, tb_y + 4, LOG_COR_CIANO);
+    gui_retangulo(x + 186, tb_y, 96, 22, LOG_COR_BTN);
+    gui_borda(x + 186, tb_y, 96, 22, LOG_COR_CIANO);
+    gui_texto(x + 198, tb_y + 4, "Atualizar", LOG_COR_CIANO);
 
-    desenhar_caixa_com_borda(x + 290, tb_y, 118, 22, 1, LOG_COR_VERDE, LOG_COR_BTN);
-    gpu_escrever_texto("+ Evento Teste", x + 298, tb_y + 4, LOG_COR_VERDE);
+    gui_retangulo(x + 290, tb_y, 118, 22, LOG_COR_BTN);
+    gui_borda(x + 290, tb_y, 118, 22, LOG_COR_VERDE);
+    gui_texto(x + 298, tb_y + 4, "+ Evento Teste", LOG_COR_VERDE);
 
     /* Área de leitura do arquivo .flog */
     int vx = x + 12;
     int vy = y + 64;
     int vw = w - 24;
     int vh = h - 88;
-    desenhar_caixa_com_borda(vx, vy, vw, vh, 1, 0xFF4C2889, LOG_COR_VISOR);
+    gui_retangulo(vx, vy, vw, vh, LOG_COR_VISOR);
+    gui_borda(vx, vy, vw, vh, 0xFF4C2889);
 
     const char *buf = fydlog_obter_buffer();
     if (!buf || !buf[0]) {
-        gpu_escrever_texto("Nenhum registro encontrado em /fyd/dados/logs/sistema.flog.", vx + 12, vy + 14, LOG_COR_SUAVE);
+        gui_texto(vx + 12, vy + 14, "Nenhum registro encontrado em /fyd/dados/logs/sistema.flog.", LOG_COR_SUAVE);
         return;
     }
 
-    /* Avança até linha_topo */
     int linha_atual = 0;
     const char *p = buf;
     while (*p && linha_atual < linha_topo) {
@@ -128,7 +129,6 @@ static void vlog_desenhar(void) {
         p++;
     }
 
-    /* Renderiza até MAX_LINHAS_VISIVEIS */
     int desenhadas = 0;
     char linha_tmp[MAX_CHARS_LINHA + 1];
 
@@ -139,17 +139,15 @@ static void vlog_desenhar(void) {
         }
         linha_tmp[i] = '\0';
 
-        /* Se a linha for maior que o visor, avança até o próximo '\n' */
         while (*p && *p != '\n') p++;
         if (*p == '\n') p++;
 
         uint32_t cor = log_cor_por_nivel(linha_tmp);
-        gpu_escrever_texto(linha_tmp, vx + 10, vy + 10 + (desenhadas * 17), cor);
+        gui_texto(vx + 10, vy + 10 + (desenhadas * 17), linha_tmp, cor);
         desenhadas++;
     }
 
-    /* Rodapé informativo */
-    gpu_escrever_texto("Formato: #!FYDLOG v1 | Use Setas Cima/Baixo ou os botoes acima.", x + 14, y + h - 18, LOG_COR_SUAVE);
+    gui_texto(x + 14, y + h - 18, "Formato: #!FYDLOG v1 | Use W/S ou os botoes acima para rolar.", LOG_COR_SUAVE);
 }
 
 static void vlog_on_click(int rel_x, int rel_y) {
@@ -157,19 +155,14 @@ static void vlog_on_click(int rel_x, int rel_y) {
     int total = log_contar_linhas(buf);
     int max_topo = (total > MAX_LINHAS_VISIVEIS) ? (total - MAX_LINHAS_VISIVEIS) : 0;
 
-    /* Cliques na barra de ferramentas (tb_y = 34..56) */
     if (rel_y >= 34 && rel_y <= 56) {
         if (rel_x >= 12 && rel_x <= 88) {
-            /* Subir */
             if (linha_topo > 0) linha_topo--;
         } else if (rel_x >= 96 && rel_x <= 178) {
-            /* Descer */
             if (linha_topo < max_topo) linha_topo++;
         } else if (rel_x >= 186 && rel_x <= 282) {
-            /* Atualizar -> vai para o final */
             linha_topo = max_topo;
         } else if (rel_x >= 290 && rel_x <= 408) {
-            /* Grava evento manual de diagnóstico */
             fydlog_escrever(LOG_INFO, "Evento de diagnostico registrado pelo Visualizador");
             total = log_contar_linhas(fydlog_obter_buffer());
             linha_topo = (total > MAX_LINHAS_VISIVEIS) ? (total - MAX_LINHAS_VISIVEIS) : 0;
