@@ -113,6 +113,7 @@ static const ItemMenuIniciar itens_menu[] = {
     { "Painel Sistema",  icone_sistema,       1, 5 },
     { "Configuracoes",   icone_config,        1, 6 },
     { "Rede & Wi-Fi",    icone_ethernet,      1, 7 },
+    { "Logs (.flog)",    icone_terminal,      1, 9 },
 };
 #define TOTAL_ITENS_MENU (int)(sizeof(itens_menu) / sizeof(itens_menu[0]))
 
@@ -962,8 +963,6 @@ static void exibir_tela_login(int L, int A) {
     }
 }
 
-#include "../apps/apps.h"
-
 void gui_retangulo(int x, int y, int w, int h, uint32_t cor) {
     desenhar_retangulo_solido(x, y, w, h, cor);
 }
@@ -1107,6 +1106,10 @@ static int exibir_desktop_grafico(int L, int A) {
     int arrastando_calc = 0;
     int calc_drag_off_x = 0;
     int calc_drag_off_y = 0;
+    /* Estado de arraste do FydLog */
+    int arrastando_logs = 0;
+    int logs_drag_off_x = 0;
+    int logs_drag_off_y = 0;
 
     /* Estado da Barra de Tarefas & Botao "F" */
     int taskbar_h      = 38;
@@ -1344,6 +1347,10 @@ static int exibir_desktop_grafico(int L, int A) {
             if (app_calculadora.aberta) {
                 app_calculadora.desenhar();
             }
+            /* 4.2 Janelas de Aplicativos Nativos (apps/) */
+            if (app_visualizador_logs.aberta) {
+                app_visualizador_logs.desenhar();
+            }
 
             /* 5. Barra de Tarefas Inferior */
             desenhar_retangulo_solido(0, taskbar_y, L, taskbar_h, COR_PAINEL);
@@ -1439,6 +1446,25 @@ static int exibir_desktop_grafico(int L, int A) {
                 precisa_redesenhar = 1;
             }
         }
+        /* Arraste contínuo do FydLog (independente da janela principal!) */
+        if (arrastando_logs) {
+            if (botao_esq_pressionado) {
+                int nx = mx - logs_drag_off_x;
+                int ny = my - logs_drag_off_y;
+                if (nx < 0) nx = 0;
+                if (nx + app_visualizador_logs.w > L) nx = L - app_visualizador_logs.w;
+                if (ny < 34) ny = 34;
+                if (ny + app_visualizador_logs.h > taskbar_y) ny = taskbar_y - app_visualizador_logs.h;
+                if (nx != app_visualizador_logs.x || ny != app_visualizador_logs.y) {
+                    app_visualizador_logs.x = nx;
+                    app_visualizador_logs.y = ny;
+                    precisa_redesenhar = 1;
+                }
+            } else {
+                arrastando_logs = 0;
+                precisa_redesenhar = 1;
+            }
+        }
 
         /* Tratamento de cliques */
         if (clique_agora) {
@@ -1483,6 +1509,7 @@ static int exibir_desktop_grafico(int L, int A) {
                             else if (acao == 6) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
                             else if (acao == 7) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
                             else if (acao == 8) { app_calculadora.abrir(); }
+                            else if (acao == 9) { app_visualizador_logs.abrir(); }
 
                             menu_aberto = 0;
                             precisa_redesenhar = 1;
@@ -1515,6 +1542,27 @@ static int exibir_desktop_grafico(int L, int A) {
                     app_calculadora.on_click(rel_x, rel_y);
                 }
 
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
+            }
+            /* 2.6 Cliques na janela do FydLog (prioridade por estar em primeiro plano) */
+            else if (app_visualizador_logs.aberta &&
+                     ponto_no_retangulo(mx, my, app_visualizador_logs.x, app_visualizador_logs.y,
+                                        app_visualizador_logs.w, app_visualizador_logs.h)) {
+                int rel_x = mx - app_visualizador_logs.x;
+                int rel_y = my - app_visualizador_logs.y;
+            
+                if (rel_x >= app_visualizador_logs.w - 24 && rel_x <= app_visualizador_logs.w - 4 &&
+                    rel_y >= 3 && rel_y <= 23) {
+                    app_visualizador_logs.aberta = 0;
+                    arrastando_logs = 0;
+                } else if (rel_y >= 0 && rel_y <= 26) {
+                    arrastando_logs = 1;
+                    logs_drag_off_x = rel_x;
+                    logs_drag_off_y = rel_y;
+                } else {
+                    app_visualizador_logs.on_click(rel_x, rel_y);
+                }
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
