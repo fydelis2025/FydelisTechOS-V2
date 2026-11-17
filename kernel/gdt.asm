@@ -5,6 +5,8 @@
 bits 64
 default rel
 
+DEFAULT_RSP0 equ 0x90000            ; Pilha padrao de Ring 0 para transicoes Ring 3 -> Ring 0
+
 section .text
 global gdt_init
 global gdt_flush
@@ -14,21 +16,36 @@ global tss_set_rsp0
 ; INICIALIZACAO DA GDT + TSS
 ; ==========================================
 gdt_init:
-    ; Preenche endereco base da TSS (64 bits) na entrada 5 da GDT (offset 0x28)
+    ; 1. Zera toda a TSS (104 bytes) e define RSP0 inicial e IOPB
+    lea rdi, [rel tss64]
+    xor eax, eax
+    mov ecx, 104 / 4
+    rep stosd
+
+    mov qword [rel tss64 + 4], DEFAULT_RSP0     ; RSP0 padrao
+    mov word  [rel tss64 + 102], 104            ; Offset I/O Permission Bitmap (sem mapa)
+
+    ; 2. Preenche endereco base da TSS (64 bits) na entrada 5 da GDT (offset 0x28)
     lea rax, [rel tss64]
     lea rdx, [rel gdt_tss]
 
     mov word [rdx + 2], ax          ; Base [15:0]
     shr rax, 16
     mov byte [rdx + 4], al          ; Base [23:16]
+    mov byte [rdx + 5], 0x89        ; Garante tipo 64-bit TSS Available (nao Busy)
     mov byte [rdx + 7], ah          ; Base [31:24]
     shr rax, 16
     mov dword [rdx + 8], eax        ; Base [63:32]
+    mov dword [rdx + 12], 0         ; Reservado
+
+    ; 3. Preenche endereco base linear da GDT no descritor (RIP-relative seguro)
+    lea rax, [rel gdt]
+    mov qword [rel gdt_descriptor + 2], rax
 
     lgdt [rel gdt_descriptor]
     call gdt_flush
 
-    ; Carrega Task Register (seletor 0x28 = indice 5 * 8)
+    ; 4. Carrega Task Register (seletor 0x28 = indice 5 * 8)
     mov ax, 0x28
     ltr ax
     ret
@@ -79,7 +96,7 @@ gdt_fim:
 align 16
 gdt_descriptor:
     dw gdt_fim - gdt - 1            ; Limite da GDT
-    dq gdt                          ; Base linear 64-bit
+    dq 0                            ; Base linear 64-bit (preenchida no gdt_init)
 
 section .bss
 align 16
