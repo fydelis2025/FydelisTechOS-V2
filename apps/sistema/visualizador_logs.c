@@ -56,7 +56,7 @@ static void vlog_desenhar(void);
 static void vlog_on_click(int rel_x, int rel_y);
 static void vlog_on_key(char tecla);
 
-FydApp app_visualizador_logs = {
+FydelisApp app_visualizador_logs = {
     .titulo   = "FydLog - /fyd/dados/logs/sistema.flog",
     .x        = 180,
     .y        = 95,
