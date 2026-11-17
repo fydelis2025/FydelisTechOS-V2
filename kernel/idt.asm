@@ -7,8 +7,9 @@ bits 64
 default rel
 
 IDT_ENTRIES equ 256
+CODE_SEG_64 equ 0x18            ; Seletor de codigo 64-bit conforme CS=0x0018 da GDT
 
-section .rodata
+section .data
 align 8
 idt_ptr:
     dw IDT_ENTRIES * 16 - 1     ; Limite
@@ -24,32 +25,43 @@ global idt_init
 extern kernel_panic_handler     ; Handler visual e de log em kernel/panic.c
 extern apic_eoi                 ; EOI do Local APIC em kernel/apic.asm
 
-; Stub de Timer (IRQ0 / GSI 2 - Vetor 32): acorda o HLT e envia EOI ao APIC
-irq0_timer_stub:
+; ============================================================================
+; STUBS DE IRQ DO APIC (Preservam todos os registradores volateis System V)
+; ============================================================================
+%macro IRQ_APIC_STUB 1
+%1:
     push rax
+    push rcx
+    push rdx
+    push rsi
+    push rdi
     push r8
+    push r9
+    push r10
+    push r11
+
     call apic_eoi
+
+    pop r11
+    pop r10
+    pop r9
     pop r8
+    pop rdi
+    pop rsi
+    pop rdx
+    pop rcx
     pop rax
     iretq
+%endmacro
+
+; Stub de Timer (IRQ0 / GSI 2 - Vetor 32): acorda o HLT e envia EOI ao APIC
+IRQ_APIC_STUB irq0_timer_stub
 
 ; Stub de Teclado PS/2 (IRQ1 - Vetor 33): acorda o HLT sem consumir porta 0x60
-keyboard_stub:
-    push rax
-    push r8
-    call apic_eoi
-    pop r8
-    pop rax
-    iretq
+IRQ_APIC_STUB keyboard_stub
 
 ; Stub de Mouse PS/2 (IRQ12 - Vetor 44): acorda o HLT e envia EOI ao APIC
-irq12_mouse_stub:
-    push rax
-    push r8
-    call apic_eoi
-    pop r8
-    pop rax
-    iretq
+IRQ_APIC_STUB irq12_mouse_stub
 
 ; Stub para interrupcao espuria do APIC (Vetor 0xFF - NAO envia EOI)
 irq_espuria_stub:
@@ -206,7 +218,7 @@ idt_init:
     jz .entrada_nula
 
     mov word [rax], dx
-    mov word [rax + 2], 0x08
+    mov word [rax + 2], CODE_SEG_64
     mov byte [rax + 4], 0
     mov byte [rax + 5], 0x8E    ; Presente, Ring 0, Interrupt Gate 64-bit
 
