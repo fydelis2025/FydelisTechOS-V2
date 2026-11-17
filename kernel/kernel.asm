@@ -39,6 +39,8 @@ extern fydlog_inicializar
 ;extern pci_init
 ;extern usb_scan_controllers
 
+extern idt_init
+
 global bytes_para_gb
 global _entry16
 global start
@@ -220,6 +222,7 @@ gdt64_boot_desc:
 ; ======================================
 BITS 64
 start:
+    cli
     mov     ax, 0x10
     mov     ds, ax
     mov     es, ax
@@ -227,6 +230,9 @@ start:
     mov     gs, ax
     mov     ss, ax
     mov     rsp, 0x90000
+
+    ; Carrega a IDT de 64 bits (com seletor 0x18) ANTES de qualquer driver ou C
+    call    idt_init
 
     ; Transferir dados VESA salvos em 0x7000 com extensao zero para 64/32 bits
     mov     eax, [0x7000]           ; Leitura 32-bit zera os 32 bits superiores de RAX
