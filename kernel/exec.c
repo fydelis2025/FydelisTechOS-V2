@@ -1,8 +1,8 @@
 /* ============================================================================
- * FydelisTech OS v4.2 — Motor Gráfico, Window Manager & Desktop Interativo
- * Arquitetura: x86_64 Freestanding | VESA Linear Framebuffer 32-bit + PS/2
- * Integrado com: icones.h, fontes_ui.h, estrutura.asm, energia.asm e Systray
- * ============================================================================ */
+- FydelisTech OS v4.2 — Motor Gráfico, Window Manager & Desktop Interativo
+- Arquitetura: x86_64 Freestanding | VESA Linear Framebuffer 32-bit + PS/2
+- Otimizado: Zero I/O blocking no loop, HLT de baixo consumo e Pitch exato
+- ============================================================================ */
 #include "../apps/apps.h"
 #include "../include/fyd_formatos.h"
 #include "../include/fydlog.h"
@@ -43,23 +43,17 @@ extern uint64_t ws_inicializar(void);
 extern void     ws_atualizar_cursor(void);
 extern uint64_t rede_ler_status_link(void);
 extern uint64_t timer_ler_ticks(void);
-//bluetooth
 extern uint64_t bt_detectar_placa(void);
 extern uint64_t bt_inicializar(void);
 extern uint64_t bt_ler_status(void);
-//audio
-extern void audio_init(void);
+extern void     audio_init(void);
 extern uint64_t audio_ler_status(void);
-//disco
 extern uint64_t detectar_disco(uint64_t numero_disco);
 extern uint64_t obter_tamanho_disco(void);
-//rede
 
-//Extensões fyd
 extern const char *fs_ler_config_padrao(void);
 extern FydelisApp app_visualizador_logs;
 
-/* Modos de exibição da Janela Principal */
 enum {
     MODO_JANELA_SISTEMA  = 1,
     MODO_JANELA_EXPLORER = 2,
@@ -67,7 +61,6 @@ enum {
     MODO_JANELA_CONFIG   = 4
 };
 
-/* Estrutura de Data/Hora lida do RTC CMOS */
 typedef struct {
     uint8_t seg;
     uint8_t min;
@@ -77,17 +70,13 @@ typedef struct {
     uint8_t ano;
 } RtcDataHora;
 
-/* Categorias e Itens do Menu Iniciar */
 typedef struct {
     const char     *rotulo;
     const uint32_t *icone;
-    int             coluna;   /* 0 = Aplicativos (Esquerda), 1 = Sistema (Direita) */
+    int             coluna;
     int             acao_id;
 } ItemMenuIniciar;
 
-/* ============================================================================
- * TELEMETRIA DE HARDWARE (CPU via CPUID/RDTSC, RAM via CMOS, DISCO via ATA)
- * ============================================================================ */
 typedef struct {
     char     cpu_vendor[16];
     int      cpu_uso_pct;
@@ -103,14 +92,16 @@ static inline uint64_t ler_tsc(void) {
     return ((uint64_t)hi << 32) | lo;
 }
 
+static inline void descansar_cpu_hlt(void) {
+    __asm__ volatile ("sti; hlt");
+}
+
 static const ItemMenuIniciar itens_menu[] = {
-    /* Coluna 0: APLICATIVOS */
     { "Explorer (/fyd)", icone_pasta_aberta,  0, 1 },
     { "Aplicativos",     icone_iniciar,       0, 2 },
     { "FydelTerm",       icone_terminal,      0, 3 },
     { "Agenda",          icone_agenda,        0, 4 },
     { "Calculadora",     icone_config,        0, 8 },
-    /* Coluna 1: SISTEMA & CONFIGURAÇÕES */
     { "Painel Sistema",  icone_sistema,       1, 5 },
     { "Configuracoes",   icone_config,        1, 6 },
     { "Rede & Wi-Fi",    icone_ethernet,      1, 7 },
@@ -119,10 +110,10 @@ static const ItemMenuIniciar itens_menu[] = {
 #define TOTAL_ITENS_MENU (int)(sizeof(itens_menu) / sizeof(itens_menu[0]))
 
 /* ============================================================================
- * DOUBLE BUFFER (BACKBUFFER EM RAM) — Elimina flicker ao arrastar janelas
- * ============================================================================ */
-#define MAX_FB_PIXELS (1920 * 1080)
-static uint32_t  backbuffer_ram[MAX_FB_PIXELS] __attribute__((aligned(16)));
+- DOUBLE BUFFER (BACKBUFFER EM RAM) — Alinhado com Pitch Real da VRAM
+- ============================================================================ */
+#define MAX_FB_DWORDS (2048 * 1200)
+static uint32_t  backbuffer_ram[MAX_FB_DWORDS] __attribute__((aligned(16)));
 static uint32_t *vram_real_base = 0;
 
 static void backbuffer_iniciar_frame(void) {
@@ -130,25 +121,25 @@ static void backbuffer_iniciar_frame(void) {
         vram_real_base = fb_base;
     }
     if (vram_real_base) {
-        fb_base = backbuffer_ram; /* Todas as funções desenham na RAM */
+        fb_base = backbuffer_ram;
     }
 }
 
 static void backbuffer_apresentar_frame(int L, int A) {
     if (!vram_real_base) return;
 
-    fb_base = vram_real_base; /* Restaura ponteiro da VRAM para o cursor HW/SW */
+    fb_base = vram_real_base;
 
-    uint32_t stride_pixels = (fb_pitch > 0) ? (fb_pitch / 4) : (uint32_t)L;
-    uint64_t total_pixels  = (uint64_t)stride_pixels * (uint64_t)A;
-    if (total_pixels > MAX_FB_PIXELS) total_pixels = MAX_FB_PIXELS;
+    uint32_t pitch_bytes   = (fb_pitch > 0) ? fb_pitch : ((uint32_t)L * 4U);
+    uint32_t stride_dwords = pitch_bytes / 4U;
+    uint64_t total_dwords  = (uint64_t)stride_dwords * (uint64_t)A;
+    if (total_dwords > MAX_FB_DWORDS) total_dwords = MAX_FB_DWORDS;
 
-    /* Copia 8 bytes (2 pixels) por ciclo usando rep movsq */
-    uint64_t qwords = total_pixels / 2;
+    uint64_t qwords = total_dwords / 2;
     void *dst = (void *)vram_real_base;
     const void *src = (const void *)backbuffer_ram;
     __asm__ volatile (
-        "rep movsq"
+        "cld; rep movsq"
         : "+D"(dst), "+S"(src), "+c"(qwords)
         :
         : "memory"
@@ -156,8 +147,8 @@ static void backbuffer_apresentar_frame(int L, int A) {
 }
 
 /* ============================================================================
- * FONTE BITMAP 8x16 COMPLETA (ASCII 32..126)
- * ============================================================================ */
+- FONTE BITMAP 8x16 COMPLETA (ASCII 32..126)
+- ============================================================================ */
 static const uint8_t fonte_8x16[95][16] = {
     {0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}, /* 32 ' ' */
     {0x00,0x00,0x18,0x3C,0x3C,0x3C,0x18,0x18,0x18,0x00,0x18,0x18,0x00,0x00,0x00,0x00}, /* 33 '!' */
@@ -257,8 +248,8 @@ static const uint8_t fonte_8x16[95][16] = {
 };
 
 /* ============================================================================
- * PRIMITIVAS DE HARDWARE (PS/2, CMOS RTC & UTILITÁRIOS)
- * ============================================================================ */
+- PRIMITIVAS DE HARDWARE (PS/2, CMOS RTC & UTILITÁRIOS)
+- ============================================================================ */
 static inline uint8_t inb(uint16_t porta) {
     uint8_t val;
     __asm__ volatile ("inb %1, %0" : "=a"(val) : "Nd"(porta));
@@ -279,8 +270,8 @@ static uint8_t bcd_para_bin(uint8_t val) {
 }
 
 static void rtc_ler_agora(RtcDataHora *dt) {
-    /* Aguarda fim de ciclo de atualização do RTC (bit 7 do reg 0x0A) */
-    while (ler_cmos(0x0A) & 0x80) {
+    /* Timeout seguro para evitar travamento caso RTC emulado nao responda */
+    for (int timeout = 1000; timeout > 0 && (ler_cmos(0x0A) & 0x80); timeout--) {
         __asm__ volatile ("pause");
     }
 
@@ -382,8 +373,8 @@ static void num_para_str(int valor, char *buf, size_t tam) {
 }
 
 /* ============================================================================
- * MOTOR DE RENDERIZAÇÃO DIRETA NO FRAMEBUFFER VESA (32-BIT XRGB8888)
- * ============================================================================ */
+- MOTOR DE RENDERIZAÇÃO DIRETA NO FRAMEBUFFER / BACKBUFFER (32-BIT XRGB8888)
+- ============================================================================ */
 static void desenhar_retangulo_solido(int x, int y, int largura, int altura, uint32_t cor) {
     if (!fb_base || largura <= 0 || altura <= 0) return;
 
@@ -415,7 +406,6 @@ static void desenhar_caixa_com_borda(int x, int y, int w, int h, int espessura, 
     );
 }
 
-/* Renderiza ícones SVG rasterizados em ARGB8888 (icones.h) com Alpha Blending inteiro */
 static void gpu_desenhar_icone(const uint32_t *pixels, int x, int y, int w, int h) {
     if (!pixels || !fb_base) return;
     uint32_t pitch_bytes = fb_pitch ? fb_pitch : (fb_largura * 4);
@@ -447,7 +437,6 @@ static void gpu_desenhar_icone(const uint32_t *pixels, int x, int y, int w, int 
     }
 }
 
-/* Renderiza texto grande com anti-aliasing suave (fontes_ui.h) para títulos */
 static void gpu_escrever_titulo(const char *texto, int x, int y, uint32_t cor) {
     if (!texto || !fb_base) return;
     uint32_t pitch_bytes = fb_pitch ? fb_pitch : (fb_largura * 4);
@@ -536,8 +525,8 @@ static void escrever_texto_centralizado(const char *texto, int centro_x, int y, 
 }
 
 /* ============================================================================
- * TELEMETRIA DE HARDWARE (CPU via CPUID/RDTSC, RAM via CMOS, DISCO via ATA)
- * ============================================================================ */
+- TELEMETRIA DE HARDWARE (Consultada 1x no boot da GUI, sem travar o loop)
+- ============================================================================ */
 static void obter_cpu_vendor(char *out16) {
     uint32_t eax, ebx, ecx, edx;
     __asm__ volatile ("cpuid" : "=a"(eax), "=b"(ebx), "=c"(ecx), "=d"(edx) : "a"(0));
@@ -549,7 +538,6 @@ static void obter_cpu_vendor(char *out16) {
 }
 
 static uint32_t detectar_ram_total_mb(void) {
-    /* Regs CMOS 0x34/0x35: memoria acima de 16 MB em blocos de 64 KB */
     uint32_t b64_lo = ler_cmos(0x34);
     uint32_t b64_hi = ler_cmos(0x35);
     uint32_t blocos_64k = (b64_hi << 8) | b64_lo;
@@ -558,7 +546,6 @@ static uint32_t detectar_ram_total_mb(void) {
         return 16 + ((blocos_64k * 64) / 1024);
     }
 
-    /* Fallback regs CMOS 0x30/0x31: memoria estendida em KB */
     uint32_t kb_lo = ler_cmos(0x30);
     uint32_t kb_hi = ler_cmos(0x31);
     uint32_t ext_kb = (kb_hi << 8) | kb_lo;
@@ -567,12 +554,11 @@ static uint32_t detectar_ram_total_mb(void) {
 
 static void inicializar_telemetria(TelemetriaSistema *tel, int L, int A) {
     obter_cpu_vendor(tel->cpu_vendor);
-    tel->cpu_uso_pct = 8;
+    tel->cpu_uso_pct = 4;
 
     tel->ram_total_mb = detectar_ram_total_mb();
     if (tel->ram_total_mb < 32) tel->ram_total_mb = 128;
 
-    /* Kernel + Stack + VFS + Framebuffer VESA 32-bit */
     uint32_t fb_mb = (uint32_t)(((uint64_t)L * (uint64_t)A * 4ULL) / (1024ULL * 1024ULL));
     tel->ram_usada_mb = 12 + fb_mb;
     if (tel->ram_usada_mb > tel->ram_total_mb) {
@@ -582,7 +568,6 @@ static void inicializar_telemetria(TelemetriaSistema *tel, int L, int A) {
     tel->disco_online = (detectar_disco(0) != 0);
     if (tel->disco_online) {
         uint64_t setores = obter_tamanho_disco();
-        /* 1 setor = 512 bytes -> 2048 setores = 1 MB */
         tel->disco_total_mb = (uint32_t)(setores / 2048ULL);
     } else {
         tel->disco_total_mb = 0;
@@ -609,7 +594,6 @@ static void desenhar_widgets_sistema(int L, const TelemetriaSistema *tel) {
     char num[16];
     size_t p;
 
-    /* Moldura do Painel de Widgets */
     desenhar_caixa_com_borda(wx, wy, w_larg, w_alt, 1, COR_ROXO_NEON, COR_PAINEL);
     desenhar_retangulo_solido(wx + 1, wy + 1, w_larg - 2, 24, COR_CARD);
     gpu_escrever_texto("MONITOR DE HARDWARE", wx + 12, wy + 5, COR_CIANO_NEON);
@@ -679,12 +663,12 @@ static void desenhar_widgets_sistema(int L, const TelemetriaSistema *tel) {
 }
 
 /* ============================================================================
- * SYSTEM TRAY (CANTO INFERIOR DIREITO: REDE + WIFI + BT + AUDIO + DISCO + RTC)
- * ============================================================================ */
+- SYSTEM TRAY (Usa valores em cache — ZERO leituras de porta I/O no desenho)
+- ============================================================================ */
 #define SYSTRAY_LARGURA 248
 
 static void desenhar_systray(int L, int taskbar_y, int taskbar_h,
-                             int disco_ok, int bt_status, int audio_status,
+                             int link_ativo, int disco_ok, int bt_status, int audio_status,
                              const RtcDataHora *dt, int mx, int my) {
     int tray_w = SYSTRAY_LARGURA;
     int tray_h = taskbar_h - 6;
@@ -693,25 +677,23 @@ static void desenhar_systray(int L, int taskbar_y, int taskbar_h,
 
     int hover_tray = ponto_no_retangulo(mx, my, tray_x, tray_y, tray_w, tray_h);
 
-    /* Moldura do System Tray no canto direito */
     desenhar_caixa_com_borda(tray_x, tray_y, tray_w, tray_h, 1,
         hover_tray ? COR_CIANO_NEON : COR_BORDA_SUTIL,
         hover_tray ? COR_HOVER : COR_PAINEL_SEC);
 
     int ico_y = tray_y + 6;
 
-    /* 1. Rede Cabeada (icone_ethernet) */
+    /* 1. Rede Cabeada */
     int eth_x = tray_x + 8;
-    int link_ativo = (rede_ler_status_link() != 0);
     gpu_desenhar_icone(icone_ethernet, eth_x, ico_y, ICONE_TAM, ICONE_TAM);
     desenhar_retangulo_solido(eth_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5,
         link_ativo ? COR_VERDE_NEON : COR_ROXO_CLARO);
 
-    /* 2. Rede Wi-Fi (icone_wifi) */
+    /* 2. Rede Wi-Fi */
     int wifi_x = eth_x + 26;
     gpu_desenhar_icone(icone_wifi, wifi_x, ico_y, ICONE_TAM, ICONE_TAM);
 
-    /* 3. Bluetooth (icone_bluetooth) -> 0: ausente, 1: ativo, 2: conectado */
+    /* 3. Bluetooth */
     int bt_x = wifi_x + 26;
     gpu_desenhar_icone(icone_bluetooth, bt_x, ico_y, ICONE_TAM, ICONE_TAM);
     uint32_t cor_led_bt = COR_BORDA_SUTIL;
@@ -719,7 +701,7 @@ static void desenhar_systray(int L, int taskbar_y, int taskbar_h,
     else if (bt_status == 1) cor_led_bt = COR_CIANO_NEON;
     desenhar_retangulo_solido(bt_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5, cor_led_bt);
 
-    /* 4. Audio (icone_audio) -> 0: sem placa, 1: ativo, 2: mudo */
+    /* 4. Audio */
     int aud_x = bt_x + 26;
     gpu_desenhar_icone(icone_audio, aud_x, ico_y, ICONE_TAM, ICONE_TAM);
     uint32_t cor_led_aud = COR_BORDA_SUTIL;
@@ -727,17 +709,16 @@ static void desenhar_systray(int L, int taskbar_y, int taskbar_h,
     else if (audio_status == 2) cor_led_aud = COR_VERMELHO_ALERTA;
     desenhar_retangulo_solido(aud_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5, cor_led_aud);
 
-    /* 5. Disco ATA/IDE (icone_disco) */
+    /* 5. Disco ATA/IDE */
     int disk_x = aud_x + 26;
     gpu_desenhar_icone(icone_disco, disk_x, ico_y, ICONE_TAM, ICONE_TAM);
     desenhar_retangulo_solido(disk_x + ICONE_TAM - 4, ico_y + ICONE_TAM - 4, 5, 5,
         disco_ok ? COR_VERDE_NEON : COR_VERMELHO_ALERTA);
 
-    /* Separador vertical antes do Relogio/Data */
     int sep_x = disk_x + 26;
     desenhar_retangulo_solido(sep_x, tray_y + 5, 1, tray_h - 10, COR_BORDA_SUTIL);
 
-    /* 6. Relogio Digital (HH:MM) + Data (DD/MM/20YY) */
+    /* 6. Relogio Digital + Data */
     char hora_str[8];
     char data_str[12];
 
@@ -759,9 +740,10 @@ static void desenhar_systray(int L, int taskbar_y, int taskbar_h,
     gpu_escrever_texto(hora_str, relogio_x + 20, tray_y + 2, COR_TEXTO_BRANCO);
     gpu_escrever_texto(data_str, relogio_x, tray_y + 16, COR_TEXTO_SUAVE);
 }
+
 /* ============================================================================
- * DRIVER DE TECLADO PS/2 PARA INTERFACE GRÁFICA
- * ============================================================================ */
+- DRIVER DE TECLADO PS/2 PARA INTERFACE GRÁFICA
+- ============================================================================ */
 static char ler_tecla_ps2(void) {
     static const char mapa_scancode[128] = {
         0,  27, '1','2','3','4','5','6','7','8','9','0','-','=', '\b',
@@ -783,8 +765,8 @@ static char ler_tecla_ps2(void) {
 }
 
 /* ============================================================================
- * TELA 1: ANIMAÇÃO DE CARREGAMENTO DO AMBIENTE GRÁFICO
- * ============================================================================ */
+- TELA 1: ANIMAÇÃO DE CARREGAMENTO DO AMBIENTE GRÁFICO
+- ============================================================================ */
 static void exibir_splash_carregamento(int L, int A) {
     desenhar_retangulo_solido(0, 0, L, A, COR_FUNDO_ESCURO);
     desenhar_retangulo_solido(0, 0, L, 4, COR_CIANO_NEON);
@@ -802,16 +784,16 @@ static void exibir_splash_carregamento(int L, int A) {
     desenhar_caixa_com_borda(barra_x - 2, barra_y - 2, barra_larg + 4, barra_alt + 4, 2, COR_ROXO_NEON, COR_PAINEL);
 
     char pct_buf[16];
-    for (int p = 0; p <= 100; p += 4) {
+    for (int p = 0; p <= 100; p += 10) {
         int preenchido = (p * barra_larg) / 100;
         uint32_t cor_barra = (p == 100) ? COR_CIANO_NEON : COR_ROXO_NEON;
 
         desenhar_retangulo_solido(barra_x, barra_y, preenchido, barra_alt, cor_barra);
         desenhar_retangulo_solido(barra_x, barra_y + barra_alt + 12, barra_larg, 20, COR_FUNDO_ESCURO);
 
-        if (p < 35) {
+        if (p < 40) {
             gpu_escrever_texto("Carregando drivers VESA 32-bit...", barra_x, barra_y + barra_alt + 14, COR_TEXTO_SUAVE);
-        } else if (p < 75) {
+        } else if (p < 80) {
             gpu_escrever_texto("Iniciando mouse PS/2 e compositor...", barra_x, barra_y + barra_alt + 14, COR_TEXTO_SUAVE);
         } else if (p < 100) {
             gpu_escrever_texto("Preparando interface de autenticacao...", barra_x, barra_y + barra_alt + 14, COR_TEXTO_SUAVE);
@@ -827,15 +809,15 @@ static void exibir_splash_carregamento(int L, int A) {
         int pct_x = barra_x + barra_larg - ((int)str_len(pct_buf) * 8);
         gpu_escrever_texto(pct_buf, pct_x, barra_y + barra_alt + 14, COR_CIANO_NEON);
 
-        for (volatile uint64_t d = 0; d < 140000; d++);
+        for (volatile uint64_t d = 0; d < 80000; d++) {
+            __asm__ volatile ("pause");
+        }
     }
-
-    for (volatile uint64_t d = 0; d < 900000; d++);
 }
 
 /* ============================================================================
- * TELA 2: LOGIN GRÁFICO INTERATIVO (Teclado + Clique do Mouse)
- * ============================================================================ */
+- TELA 2: LOGIN GRÁFICO INTERATIVO (Com HLT para zero uso ocioso de CPU)
+- ============================================================================ */
 static void exibir_tela_login(int L, int A) {
     char usuario[24];
     char senha[24];
@@ -864,6 +846,7 @@ static void exibir_tela_login(int L, int A) {
 
     while (1) {
         if (precisa_redesenhar) {
+            backbuffer_iniciar_frame();
             ws_inicializar();
 
             desenhar_retangulo_solido(0, 0, L, A, COR_FUNDO_ESCURO);
@@ -904,6 +887,7 @@ static void exibir_tela_login(int L, int A) {
                 escrever_texto_centralizado("[TAB] Alternar  |  [ENTER] Acessar", card_x + (card_w / 2), card_y + 262, COR_TEXTO_SUAVE);
             }
 
+            backbuffer_apresentar_frame(L, A);
             precisa_redesenhar = 0;
         }
 
@@ -960,7 +944,7 @@ static void exibir_tela_login(int L, int A) {
             precisa_redesenhar = 1;
         }
 
-        __asm__ volatile ("pause");
+        descansar_cpu_hlt();
     }
 }
 
@@ -980,8 +964,8 @@ void gui_texto(int x, int y, const char *str, uint32_t cor) {
 }
 
 /* ============================================================================
- * MENU INICIAR ORGANIZADO POR CATEGORIA (APLICATIVOS | SISTEMA & CONFIG)
- * ============================================================================ */
+- MENU INICIAR ORGANIZADO POR CATEGORIA
+- ============================================================================ */
 static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_w, int menu_h, int mx, int my) {
     int cab_h     = 36;
     int rodape_h  = 40;
@@ -990,18 +974,15 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
     int corpo_y   = menu_y + cab_h;
     int corpo_h   = menu_h - cab_h - rodape_h;
 
-    /* Moldura e divisao de colunas */
     desenhar_caixa_com_borda(menu_x, menu_y, menu_w, menu_h, 2, COR_CIANO_NEON, COR_PAINEL);
     desenhar_retangulo_solido(menu_x + col_esq_w, corpo_y, col_dir_w - 2, corpo_h, COR_PAINEL_SEC);
     desenhar_retangulo_solido(menu_x + col_esq_w, corpo_y, 1, corpo_h, COR_BORDA_SUTIL);
 
-    /* Cabecalho com o emblema "F" */
     desenhar_retangulo_solido(menu_x + 2, menu_y + 2, menu_w - 4, cab_h - 2, COR_CARD);
     gpu_desenhar_icone(icone_fydelis_f, menu_x + 10, menu_y + 8, ICONE_TAM, ICONE_TAM);
     gpu_escrever_texto("FYDELISTECH OS v4.2", menu_x + 38, menu_y + 10, COR_CIANO_NEON);
     gpu_escrever_texto("admin@fydelis", menu_x + menu_w - 116, menu_y + 10, COR_VERDE_NEON);
 
-    /* Titulos das Categorias */
     gpu_escrever_texto("APLICATIVOS", menu_x + 14, corpo_y + 8, COR_ROXO_CLARO);
     gpu_escrever_texto("SISTEMA & CONFIG", menu_x + col_esq_w + 12, corpo_y + 8, COR_ROXO_CLARO);
 
@@ -1033,7 +1014,6 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
                            hover ? COR_CIANO_NEON : COR_TEXTO_BRANCO);
     }
 
-    /* Rodape de Sessao e Energia (Travar | Reiniciar | Desligar) */
     int rod_y = menu_y + menu_h - rodape_h;
     desenhar_retangulo_solido(menu_x + 2, rod_y, menu_w - 4, 1, COR_BORDA_SUTIL);
 
@@ -1041,21 +1021,18 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
     int btn_h = 28;
     int btn_y = rod_y + 6;
 
-    /* Botao 1: Travar Sessao */
     int bx1 = menu_x + 8;
     int h1  = ponto_no_retangulo(mx, my, bx1, btn_y, btn_w, btn_h);
     desenhar_caixa_com_borda(bx1, btn_y, btn_w, btn_h, 1, COR_ROXO_NEON, h1 ? COR_HOVER : COR_CARD);
     gpu_desenhar_icone(icone_bloquear, bx1 + 6, btn_y + 4, ICONE_TAM, ICONE_TAM);
     gpu_escrever_texto("Travar", bx1 + 30, btn_y + 6, COR_TEXTO_BRANCO);
 
-    /* Botao 2: Reiniciar (energia.asm) */
     int bx2 = bx1 + btn_w + 6;
     int h2  = ponto_no_retangulo(mx, my, bx2, btn_y, btn_w, btn_h);
     desenhar_caixa_com_borda(bx2, btn_y, btn_w, btn_h, 1, COR_CIANO_NEON, h2 ? COR_HOVER : COR_CARD);
     gpu_desenhar_icone(icone_relogio, bx2 + 6, btn_y + 4, ICONE_TAM, ICONE_TAM);
     gpu_escrever_texto("Reiniciar", bx2 + 30, btn_y + 6, COR_CIANO_NEON);
 
-    /* Botao 3: Desligar (energia.asm) */
     int bx3 = bx2 + btn_w + 6;
     int h3  = ponto_no_retangulo(mx, my, bx3, btn_y, btn_w, btn_h);
     desenhar_caixa_com_borda(bx3, btn_y, btn_w, btn_h, 1, COR_VERMELHO_ALERTA, h3 ? 0xFF5A1830 : COR_CARD);
@@ -1063,22 +1040,13 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
     gpu_escrever_texto("Desligar", bx3 + 30, btn_y + 6, COR_VERMELHO_ALERTA);
 }
 
-
 /* ============================================================================
- * TELA 3: ÁREA DE TRABALHO GRÁFICA (Botão F + Menu + Janelas + Widgets + Systray)
- * Retorno: 0 = voltar para FydelTerm | 1 = bloquear sessão (voltar ao Login)
- * ============================================================================ */
+- TELA 3: ÁREA DE TRABALHO GRÁFICA (Otimizada com Cache e HLT)
+- ============================================================================ */
 static int exibir_desktop_grafico(int L, int A) {
     char res_buf[48];
     char tmp[16];
 
-    /* Inicializa hardware PCI antes de ler o status para o Systray */
-    audio_init();
-    if (bt_detectar_placa() != 0) {
-        bt_inicializar();
-    }
-
-    /* Lê o fuso horário configurado em /fyd/config/sistema.fcfg (padrão: -3) */
     char tz_buf[8];
     int offset_fuso = -3;
     if (fyd_cfg_ler_chave(fs_ler_config_padrao(), "timezone", tz_buf, sizeof(tz_buf)) == 0) {
@@ -1089,7 +1057,6 @@ static int exibir_desktop_grafico(int L, int A) {
         }
     }
 
-    /* Estado da janela principal */
     int win_w = (L * 64) / 100;
     if (win_w < 500) win_w = 500;
     int win_h = (A * 56) / 100;
@@ -1103,16 +1070,14 @@ static int exibir_desktop_grafico(int L, int A) {
     int drag_offset_x  = 0;
     int drag_offset_y  = 0;
 
-    /* Estado de arraste da Calculadora */
     int arrastando_calc = 0;
     int calc_drag_off_x = 0;
     int calc_drag_off_y = 0;
-    /* Estado de arraste do FydLog */
+
     int arrastando_logs = 0;
     int logs_drag_off_x = 0;
     int logs_drag_off_y = 0;
 
-    /* Estado da Barra de Tarefas & Botao "F" */
     int taskbar_h      = 38;
     int taskbar_y      = A - taskbar_h;
     int btn_f_x        = 8;
@@ -1123,25 +1088,27 @@ static int exibir_desktop_grafico(int L, int A) {
     int menu_aberto    = 0;
     int menu_x         = 8;
     int menu_w         = 410;
-    int menu_h         = 304; /* Proporcional para 5 itens na Coluna 0 */
+    int menu_h         = 304;
     int menu_y         = taskbar_y - menu_h - 4;
 
     int precisa_redesenhar = 1;
     int btn_ant        = 0;
     int hover_ant      = -1;
 
-    /* Cache de estado dos controladores de hardware (Disco, Bluetooth, Audio) */
-    int disco_detectado = (detectar_disco(0) != 0);
+    /* Cache de hardware consultado uma única vez para não travar a interface */
+    TelemetriaSistema telemetria;
+    inicializar_telemetria(&telemetria, L, A);
+
+    int disco_detectado = telemetria.disco_online;
+    int link_rede_ativo = (rede_ler_status_link() != 0);
     int bt_estado       = (int)bt_ler_status();
     int audio_estado    = (int)audio_ler_status();
 
-    /* Registra inicialização e estado real dos drivers no FydLog (/fyd/dados/logs/sistema.flog) */
     fydlog_escrever(LOG_INFO, "Desktop grafico iniciado");
     if (!disco_detectado) {
         fydlog_escrever(LOG_AVISO, "Disco ATA primario nao respondeu");
     }
 
-    /* Controle de tempo real do RTC / Systray com fuso horário do .fcfg */
     RtcDataHora dt_atual;
     rtc_ler_agora(&dt_atual);
     int hora_local = (int)dt_atual.hora + offset_fuso;
@@ -1152,7 +1119,6 @@ static int exibir_desktop_grafico(int L, int A) {
     uint8_t min_anterior = dt_atual.min;
     uint64_t ticks_ant   = timer_ler_ticks();
 
-    /* Monta string de resolução uma única vez */
     str_copy(res_buf, "Video VESA    : ", sizeof(res_buf));
     num_para_str(L, tmp, sizeof(tmp));
     size_t pos = str_len(res_buf);
@@ -1165,9 +1131,6 @@ static int exibir_desktop_grafico(int L, int A) {
     pos = str_len(res_buf);
     str_copy(res_buf + pos, " @ 32-bit", sizeof(res_buf) - pos);
 
-    /* Inicializa Telemetria de CPU, RAM e Disco */
-    TelemetriaSistema telemetria;
-    inicializar_telemetria(&telemetria, L, A);
     uint64_t tsc_anterior  = ler_tsc();
     uint64_t ciclos_ativos = 0;
 
@@ -1175,9 +1138,9 @@ static int exibir_desktop_grafico(int L, int A) {
         int mx, my, mb;
         obter_estado_mouse(&mx, &my, &mb);
 
-        /* Atualiza relógio RTC, CPU e status de Bluetooth/Audio periodicamente */
+        /* Atualiza RTC e telemetria apenas a cada 300 ticks (~3 segundos) */
         uint64_t ticks_agora = timer_ler_ticks();
-        if ((ticks_agora - ticks_ant) >= 100) {
+        if ((ticks_agora - ticks_ant) >= 300) {
             ticks_ant = ticks_agora;
             rtc_ler_agora(&dt_atual);
             hora_local = (int)dt_atual.hora + offset_fuso;
@@ -1185,6 +1148,7 @@ static int exibir_desktop_grafico(int L, int A) {
             if (hora_local >= 24) hora_local -= 24;
             dt_atual.hora = (uint8_t)hora_local;
 
+            int novo_link  = (rede_ler_status_link() != 0);
             int novo_bt    = (int)bt_ler_status();
             int novo_audio = (int)audio_ler_status();
 
@@ -1203,10 +1167,12 @@ static int exibir_desktop_grafico(int L, int A) {
             }
             ciclos_ativos = 0;
 
-            if (dt_atual.min != min_anterior || novo_bt != bt_estado || novo_audio != audio_estado) {
-                min_anterior = dt_atual.min;
-                bt_estado    = novo_bt;
-                audio_estado = novo_audio;
+            if (dt_atual.min != min_anterior || novo_link != link_rede_ativo ||
+                novo_bt != bt_estado || novo_audio != audio_estado) {
+                min_anterior    = dt_atual.min;
+                link_rede_ativo = novo_link;
+                bt_estado       = novo_bt;
+                audio_estado    = novo_audio;
                 precisa_redesenhar = 1;
             }
         }
@@ -1247,7 +1213,7 @@ static int exibir_desktop_grafico(int L, int A) {
             gpu_desenhar_icone(icone_config, 22, 122, ICONE_TAM, ICONE_TAM);
             gpu_escrever_texto("Configuracoes", 48, 124, COR_TEXTO_SUAVE);
 
-            /* 3.1 Widgets de CPU, RAM e Disco Total no canto superior direito */
+            /* 3.1 Widgets de CPU, RAM e Disco Total */
             desenhar_widgets_sistema(L, &telemetria);
 
             /* 4. Janela Arrastável Dinâmica */
@@ -1273,7 +1239,6 @@ static int exibir_desktop_grafico(int L, int A) {
                 gpu_desenhar_icone(icone_win, win_x + 10, win_y + 7, ICONE_TAM, ICONE_TAM);
                 gpu_escrever_texto(titulo_win, win_x + 36, win_y + 9, COR_TEXTO_BRANCO);
 
-                /* Botão Fechar [X] */
                 int close_x = win_x + win_w - 28;
                 int close_y = win_y + 6;
                 desenhar_retangulo_solido(close_x, close_y, 22, 22, COR_VERMELHO_ALERTA);
@@ -1325,8 +1290,8 @@ static int exibir_desktop_grafico(int L, int A) {
                     gpu_escrever_texto("Dispositivos & Hardware (/fyd/config):", cx, cy, COR_CIANO_NEON);
                     cy += 26;
                     gpu_desenhar_icone(icone_ethernet, cx, cy - 2, ICONE_TAM, ICONE_TAM);
-                    gpu_escrever_texto(rede_ler_status_link() ? "Rede Cabeada (E1000): CONECTADA" : "Rede Cabeada (E1000): Aguardando cabo",
-                                       cx + 28, cy, rede_ler_status_link() ? COR_VERDE_NEON : COR_TEXTO_SUAVE);
+                    gpu_escrever_texto(link_rede_ativo ? "Rede Cabeada (E1000): CONECTADA" : "Rede Cabeada (E1000): Aguardando cabo",
+                                       cx + 28, cy, link_rede_ativo ? COR_VERDE_NEON : COR_TEXTO_SUAVE);
                     cy += 26;
                     gpu_desenhar_icone(icone_wifi, cx, cy - 2, ICONE_TAM, ICONE_TAM);
                     gpu_escrever_texto("Controlador Wi-Fi: Pronto (/fyd/rede)", cx + 28, cy, COR_TEXTO_BRANCO);
@@ -1345,11 +1310,9 @@ static int exibir_desktop_grafico(int L, int A) {
                 }
             }
 
-            /* 4.1 Janelas de Aplicativos Nativos (apps/) */
             if (app_calculadora.aberta) {
                 app_calculadora.desenhar();
             }
-            /* 4.2 Janelas de Aplicativos Nativos (apps/) */
             if (app_visualizador_logs.aberta) {
                 app_visualizador_logs.desenhar();
             }
@@ -1358,13 +1321,11 @@ static int exibir_desktop_grafico(int L, int A) {
             desenhar_retangulo_solido(0, taskbar_y, L, taskbar_h, COR_PAINEL);
             desenhar_retangulo_solido(0, taskbar_y, L, 2, COR_CIANO_NEON);
 
-            /* Botão Compacto com o Logotipo "F" */
             desenhar_caixa_com_borda(btn_f_x, btn_f_y, btn_f_w, btn_f_h, 1,
                 menu_aberto ? COR_CIANO_NEON : COR_ROXO_NEON,
                 menu_aberto ? COR_HOVER : COR_CARD);
             gpu_desenhar_icone(icone_fydelis_f, btn_f_x + 11, btn_f_y + 6, ICONE_TAM, ICONE_TAM);
 
-            /* Aba da janela ativa na Barra de Tarefas */
             int tab_x = btn_f_x + btn_f_w + 10;
             desenhar_caixa_com_borda(tab_x, btn_f_y + 1, 195, 30, 1,
                 janela_aberta ? COR_CIANO_NEON : COR_BORDA_SUTIL,
@@ -1375,28 +1336,22 @@ static int exibir_desktop_grafico(int L, int A) {
             else if (modo_janela == MODO_JANELA_CONFIG) rotulo_aba = "Configuracoes";
             gpu_escrever_texto(rotulo_aba, tab_x + 16, btn_f_y + 8, COR_TEXTO_BRANCO);
 
-            /* System Tray no canto direito (Ethernet + Wi-Fi + BT + Audio + Disco + RTC) */
-            bt_estado    = (int)bt_ler_status();
-            audio_estado = (int)audio_ler_status();
-            desenhar_systray(L, taskbar_y, taskbar_h, disco_detectado, bt_estado, audio_estado, &dt_atual, mx, my);
+            desenhar_systray(L, taskbar_y, taskbar_h, link_rede_ativo, disco_detectado, bt_estado, audio_estado, &dt_atual, mx, my);
 
-            /* Atalho rápido FydelTerm à esquerda do System Tray */
             int term_btn_w = 132;
             int term_btn_x = L - SYSTRAY_LARGURA - term_btn_w - 16;
             desenhar_caixa_com_borda(term_btn_x, btn_f_y + 1, term_btn_w, 30, 1, COR_ROXO_NEON, COR_CARD);
             gpu_desenhar_icone(icone_terminal, term_btn_x + 8, btn_f_y + 6, ICONE_TAM, ICONE_TAM);
             gpu_escrever_texto("FydelTerm", term_btn_x + 34, btn_f_y + 8, COR_VERDE_NEON);
 
-            /* 6. Menu Iniciar Categorizado (desenhado por cima de tudo) */
             if (menu_aberto) {
                 desenhar_menu_iniciar_categorizado(menu_x, menu_y, menu_w, menu_h, mx, my);
             }
 
-            /* Envia o frame inteiro pronto para a tela de uma vez (Zero Flicker!) */
-             backbuffer_apresentar_frame(L, A);
+            backbuffer_apresentar_frame(L, A);
 
-             ciclos_ativos += (ler_tsc() - t_frame_ini);
-             precisa_redesenhar = 0;
+            ciclos_ativos += (ler_tsc() - t_frame_ini);
+            precisa_redesenhar = 0;
         }
 
         ws_atualizar_cursor();
@@ -1405,7 +1360,6 @@ static int exibir_desktop_grafico(int L, int A) {
         int clique_agora = botao_esq_pressionado && !(btn_ant & 0x01);
         btn_ant = mb;
 
-        /* Arraste contínuo da janela principal */
         if (arrastando) {
             if (botao_esq_pressionado) {
                 int novo_x = mx - drag_offset_x;
@@ -1427,7 +1381,6 @@ static int exibir_desktop_grafico(int L, int A) {
             }
         }
 
-        /* Arraste contínuo da Calculadora (independente da janela principal!) */
         if (arrastando_calc) {
             if (botao_esq_pressionado) {
                 int nx = mx - calc_drag_off_x;
@@ -1448,7 +1401,7 @@ static int exibir_desktop_grafico(int L, int A) {
                 precisa_redesenhar = 1;
             }
         }
-        /* Arraste contínuo do FydLog (independente da janela principal!) */
+
         if (arrastando_logs) {
             if (botao_esq_pressionado) {
                 int nx = mx - logs_drag_off_x;
@@ -1468,25 +1421,22 @@ static int exibir_desktop_grafico(int L, int A) {
             }
         }
 
-        /* Tratamento de cliques */
         if (clique_agora) {
             int term_btn_w = 132;
             int term_btn_x = L - SYSTRAY_LARGURA - term_btn_w - 16;
             int tray_x     = L - SYSTRAY_LARGURA - 8;
 
-            /* 1. Botão "F" (Iniciar) */
             if (ponto_no_retangulo(mx, my, btn_f_x, btn_f_y, btn_f_w, btn_f_h)) {
                 menu_aberto = !menu_aberto;
                 precisa_redesenhar = 1;
             }
-            /* 2. Cliques dentro do Menu Iniciar Categorizado */
             else if (menu_aberto && ponto_no_retangulo(mx, my, menu_x, menu_y, menu_w, menu_h)) {
                 int rod_y = menu_y + menu_h - 40;
                 int btn_w = (menu_w - 28) / 3;
                 int btn_y = rod_y + 6;
 
                 if (ponto_no_retangulo(mx, my, menu_x + 8, btn_y, btn_w, 28)) {
-                    return 1; /* Travar Sessão -> Login */
+                    return 1;
                 } else if (ponto_no_retangulo(mx, my, menu_x + 14 + btn_w, btn_y, btn_w, 28)) {
                     energia_reiniciar_agora();
                 } else if (ponto_no_retangulo(mx, my, menu_x + 20 + (btn_w * 2), btn_y, btn_w, 28)) {
@@ -1505,7 +1455,7 @@ static int exibir_desktop_grafico(int L, int A) {
                             int acao = itens_menu[i].acao_id;
                             if (acao == 1)      { modo_janela = MODO_JANELA_EXPLORER; janela_aberta = 1; }
                             else if (acao == 2) { modo_janela = MODO_JANELA_APPS;     janela_aberta = 1; }
-                            else if (acao == 3) { return 0; /* FydelTerm */ }
+                            else if (acao == 3) { return 0; }
                             else if (acao == 4) { modo_janela = MODO_JANELA_APPS;     janela_aberta = 1; }
                             else if (acao == 5) { modo_janela = MODO_JANELA_SISTEMA;  janela_aberta = 1; }
                             else if (acao == 6) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
@@ -1520,26 +1470,22 @@ static int exibir_desktop_grafico(int L, int A) {
                     }
                 }
             }
-            /* 2.5 Cliques na janela da Calculadora (prioridade por estar em primeiro plano) */
             else if (app_calculadora.aberta &&
                      ponto_no_retangulo(mx, my, app_calculadora.x, app_calculadora.y,
                                         app_calculadora.w, app_calculadora.h)) {
                 int rel_x = mx - app_calculadora.x;
                 int rel_y = my - app_calculadora.y;
 
-                /* Botão fechar [X] no canto superior direito */
                 if (rel_x >= app_calculadora.w - 24 && rel_x <= app_calculadora.w - 4 &&
                     rel_y >= 3 && rel_y <= 23) {
                     app_calculadora.aberta = 0;
                     arrastando_calc = 0;
                 }
-                /* Barra de título (altura 26px) -> inicia arraste */
                 else if (rel_y >= 0 && rel_y <= 26) {
                     arrastando_calc = 1;
                     calc_drag_off_x = rel_x;
                     calc_drag_off_y = rel_y;
                 }
-                /* Demais áreas -> repassa clique para os botões da Calculadora */
                 else {
                     app_calculadora.on_click(rel_x, rel_y);
                 }
@@ -1547,13 +1493,12 @@ static int exibir_desktop_grafico(int L, int A) {
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            /* 2.6 Cliques na janela do FydLog (prioridade por estar em primeiro plano) */
             else if (app_visualizador_logs.aberta &&
                      ponto_no_retangulo(mx, my, app_visualizador_logs.x, app_visualizador_logs.y,
                                         app_visualizador_logs.w, app_visualizador_logs.h)) {
                 int rel_x = mx - app_visualizador_logs.x;
                 int rel_y = my - app_visualizador_logs.y;
-            
+
                 if (rel_x >= app_visualizador_logs.w - 24 && rel_x <= app_visualizador_logs.w - 4 &&
                     rel_y >= 3 && rel_y <= 23) {
                     app_visualizador_logs.aberta = 0;
@@ -1568,24 +1513,20 @@ static int exibir_desktop_grafico(int L, int A) {
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            /* 3. Aba da janela na Barra de Tarefas */
             else if (ponto_no_retangulo(mx, my, btn_f_x + btn_f_w + 10, btn_f_y + 1, 195, 30)) {
                 janela_aberta = !janela_aberta;
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            /* 4. Clique no System Tray (abre painel de Rede, BT, Audio & Disco) */
             else if (ponto_no_retangulo(mx, my, tray_x, btn_f_y, SYSTRAY_LARGURA, 32)) {
                 modo_janela = MODO_JANELA_CONFIG;
                 janela_aberta = 1;
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            /* 5. Atalho FydelTerm à esquerda do System Tray */
             else if (ponto_no_retangulo(mx, my, term_btn_x, btn_f_y + 1, term_btn_w, 30)) {
                 return 0;
             }
-            /* 6. Atalhos do Desktop */
             else if (ponto_no_retangulo(mx, my, 22, 54, 110, 22)) {
                 modo_janela = MODO_JANELA_EXPLORER;
                 janela_aberta = 1;
@@ -1604,7 +1545,6 @@ static int exibir_desktop_grafico(int L, int A) {
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            /* 7. Interação com a janela aberta */
             else if (janela_aberta) {
                 int close_x = win_x + win_w - 28;
                 int close_y = win_y + 6;
@@ -1644,13 +1584,14 @@ static int exibir_desktop_grafico(int L, int A) {
             }
         }
 
-        __asm__ volatile ("pause");
+        /* Suspende CPU até próxima IRQ de mouse, teclado ou timer */
+        descansar_cpu_hlt();
     }
 }
 
 /* ============================================================================
- * PONTO DE ENTRADA CHAMADO PELO KERNEL (kernel_exec_bin)
- * ============================================================================ */
+- PONTO DE ENTRADA CHAMADO PELO KERNEL (kernel_exec_bin)
+- ============================================================================ */
 int kernel_exec_bin(void) {
     gpu_inicializar();
 
@@ -1670,10 +1611,9 @@ int kernel_exec_bin(void) {
         exibir_tela_login(L, A);
         int acao = exibir_desktop_grafico(L, A);
         if (acao == 0) {
-            break; /* Sai para o FydelTerm */
+            break;
         }
     }
 
     return 0;
 }
-
