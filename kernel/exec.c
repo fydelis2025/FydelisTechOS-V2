@@ -1137,8 +1137,9 @@ static int exibir_desktop_grafico(int L, int A) {
 
     /* Registra inicialização e estado real dos drivers no FydLog (/fyd/dados/logs/sistema.flog) */
     fydlog_escrever(LOG_INFO, "Desktop grafico iniciado");
-    if (!disco_detectado) fydlog_escrever(LOG_AVISO, "Disco ATA primario nao respondeu");
-    if (!rede_ler_status_link()) fydlog_escrever(LOG_AVISO, "Link Ethernet E1000 desconectado");
+    if (!disco_detectado) {
+        fydlog_escrever(LOG_AVISO, "Disco ATA primario nao respondeu");
+    }
 
     /* Controle de tempo real do RTC / Systray com fuso horário do .fcfg */
     RtcDataHora dt_atual;
