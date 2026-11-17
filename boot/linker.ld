@@ -1,29 +1,38 @@
-ENTRY(start)
+ENTRY(_entry16)
 
 SECTIONS
 {
-    /* Endereço base de carregamento do kernel (geralmente 1M ou 0x8000) */
+    /* Carregado exatamente em 0x8000 pelo MBR (LBA 4096) e pelo BOOTX64.EFI */
     . = 0x8000;
 
-    .text : ALIGN(4096)
+    .text :
     {
-        *(.text._start)  /* Garante que o ponto de entrada fique no início absoluto */
-        *(.text)
+        *(.text._start)
+        *(.text .text.*)
     }
 
-    .rodata : ALIGN(4096)
+    .rodata : ALIGN(16)
     {
-        *(.rodata)
+        *(.rodata .rodata.*)
     }
 
-    .data : ALIGN(4096)
+    .data : ALIGN(16)
     {
-        *(.data)
+        *(.data .data.*)
     }
 
-    .bss : ALIGN(4096)
+    .bss : ALIGN(16)
     {
+        __bss_start = .;
         *(COMMON)
-        *(.bss)
+        *(.bss .bss.*)
+        __bss_end = .;
+    }
+
+    /DISCARD/ :
+    {
+        *(.comment)
+        *(.eh_frame)
+        *(.note.*)
     }
 }
