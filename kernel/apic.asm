@@ -1,6 +1,6 @@
 ; ==========================================
 ; APIC — Local APIC + I/O APIC (x86_64)
-; Substitui o PIC 8259A herdado
+; Substitui o PIC 8259A herdado (Unificado em kernel/apic.asm)
 ; FydelisTech OS • Salvador - Bahia
 ; ==========================================
 bits 64
@@ -23,15 +23,25 @@ IOAPIC_REGSEL equ 0x00
 IOAPIC_WIN    equ 0x10
 IOAPIC_REDTBL equ 0x10
 
+section .bss
+align 4
+apic_ok: resd 1
+
 section .text
 global apic_detect
+global apic_is_disponivel
+global apic_get_ok
 global apic_inicializar
+global interrupts_init
 global apic_eoi
+global apic_enviar_eoi
+global ioapic_redirecionar_irq
 
 ; ==========================================
 ; DETECTAR SE LOCAL APIC EXISTE (CPUID + MSR)
 ; Retorno: RAX = 1 (suportado), 0 (ausente)
 ; ==========================================
+apic_is_disponivel:
 apic_detect:
     push rbx
 
@@ -55,10 +65,18 @@ apic_detect:
     ret
 
 ; ==========================================
-; ROTEAMENTO INTERNO DE IRQ NO I/O APIC
-; EDI = numero da IRQ (ex: 1=teclado, 2=PIT timer, 12=mouse)
+; RETORNA STATUS DO APIC (1 = ativo, 0 = inativo)
+; ==========================================
+apic_get_ok:
+    mov eax, [rel apic_ok]
+    ret
+
+; ==========================================
+; ROTEAMENTO DE IRQ NO I/O APIC
+; EDI = numero da IRQ/GSI (ex: 1=teclado, 2=PIT timer, 12=mouse)
 ; ESI = vetor na IDT (ex: 32, 33, 44)
 ; ==========================================
+ioapic_redirecionar_irq:
 ioapic_mapear_irq:
     mov r8, IOAPIC_BASE
 
@@ -75,11 +93,14 @@ ioapic_mapear_irq:
     inc eax
     mov dword [r8 + IOAPIC_REGSEL], eax
     mov dword [r8 + IOAPIC_WIN], 0
+
+    mov rax, 1
     ret
 
 ; ==========================================
 ; INICIALIZAR — Desligar PIC 8259A, Ligar Local APIC + I/O APIC
 ; ==========================================
+interrupts_init:
 apic_inicializar:
     ; 1 — Remapear e mascarar completamente o PIC 8259A herdado
     mov al, 0x11
@@ -128,6 +149,8 @@ apic_inicializar:
     mov esi, 44                 ; Vetor 44 da IDT
     call ioapic_mapear_irq
 
+    mov dword [rel apic_ok], 1
+
     ; Limpa qualquer EOI pendente
     call apic_eoi
     ret
@@ -135,6 +158,7 @@ apic_inicializar:
 ; ==========================================
 ; FIM DE INTERRUPCAO — Avisar Local APIC
 ; ==========================================
+apic_enviar_eoi:
 apic_eoi:
     mov r8, APIC_BASE
     mov dword [r8 + APIC_EOI], 0
