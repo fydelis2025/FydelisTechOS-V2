@@ -35,6 +35,7 @@ extern inicializar_nic_mmio
 
 extern construir_estrutura_sistema
 extern hosts_inicializar
+extern fydlog_inicializar
 
 global bytes_para_gb
 global _entry16
@@ -360,6 +361,8 @@ start:
     call    construir_estrutura_sistema
     ; Inicializa a tabela de nomes e registra /fyd/rede/cfg/hosts.fcfg
     call hosts_inicializar
+    ; Registra /fyd/dados/logs/sistema.flog
+    call fydlog_inicializar
     ; ======================================
     ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
     ; ======================================
