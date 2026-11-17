@@ -363,6 +363,9 @@ start:
     call hosts_inicializar
     ; Registra /fyd/dados/logs/sistema.flog
     call fydlog_inicializar
+    ; --- Inicialização dos Subsistemas de Hardware ---
+    call pci_init              ; Inicializa/prepara estruturas PCI (se aplicável)
+    call usb_scan_controllers  ; Executa a varredura das controladoras USB (UHCI, OHCI, EHCI, xHCI)
     ; ======================================
     ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
     ; ======================================
