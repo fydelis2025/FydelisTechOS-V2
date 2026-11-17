@@ -231,7 +231,7 @@ start:
     mov     ss, ax
     mov     rsp, 0x90000
 
-    ; Carrega a IDT de 64 bits (com seletor 0x18) ANTES de qualquer driver ou C
+    call    gdt_init
     call    idt_init
 
     ; Transferir dados VESA salvos em 0x7000 com extensao zero para 64/32 bits
