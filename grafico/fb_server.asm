@@ -1,5 +1,5 @@
 ; ==========================================
-; FB_SERVER.ASM — COMPOSITOR NO KERNEL  (VERSÃO FINAL)
+; FB_SERVER.ASM — COMPOSITOR NO KERNEL  (VERSÃO CORRIGIDA FINAL)
 ; Gerenciador de Janelas · Cursor sem Rastro · Desempenho Otimizado
 ; FydelisTech OS v4.2 · Salvador • Bahia
 ; ==========================================
@@ -148,7 +148,7 @@ ws_desenhar_janelas:
     push    r14
     push    r15
 
-    call    cursor_restaurar_fundo
+    ; REMOVIDO: não restaura cursor aqui — janelas desenham primeiro
 
     xor     rbx, rbx
     lea     r12, [janelas]
@@ -207,7 +207,14 @@ ws_desenhar_janelas:
     pop     r12
     pop     rbx
 
-    mov     byte [janelas_sujas], 0    ; Tudo atualizado
+    mov     byte [janelas_sujas], 0
+
+    ; Depois de redesenhar janelas, restaura e redesenha o cursor por cima
+    cmp     byte [cursor_salvo], 1
+    jne     .fim
+    call    cursor_restaurar_fundo
+    call    cursor_desenhar_novo
+
 .fim:
     ret
 
@@ -247,10 +254,9 @@ cursor_restaurar_fundo:
     cmp     edx, [fb_largura]
     jge     .prox_lin
 
-    ; Corrigido: calcula offset fora do acesso à memória
     mov     r9, rbx
-    shl     r9, 6              ; r9 = linha * 64 bytes (16 dwords)
-    lea     r9, [r9 + rcx*4]   ; r9 += coluna * 4 bytes
+    shl     r9, 6
+    lea     r9, [r9 + rcx*4]
     mov     eax, [r15 + r9]
     mov     [rdi + rcx*4], eax
 
@@ -273,7 +279,7 @@ cursor_restaurar_fundo:
 .ret:
     ret
 
-; --- Salva fundo e desenha cursor — CORRIGIDO sem endereço inválido ---
+; --- Salva fundo e desenha cursor ---
 cursor_desenhar_novo:
     cmp     qword [fb_base], 0
     je      .ret
@@ -292,7 +298,7 @@ cursor_desenhar_novo:
     lea     r15, [cursor_buffer]
     lea     r8, [cursor_sprite]
 
-    xor     ebx, ebx                    ; linha do cursor 0..15
+    xor     ebx, ebx
 .lin:
     mov     eax, r13d
     add     eax, ebx
@@ -303,34 +309,32 @@ cursor_desenhar_novo:
     add     rax, [fb_base]
     lea     rdi, [rax + r12*4]
 
-    xor     ecx, ecx                    ; coluna do cursor 0..15
+    xor     ecx, ecx
 .col:
     mov     edx, r12d
     add     edx, ecx
     cmp     edx, [fb_largura]
     jge     .prox_lin
 
-    ; Salva pixel original no buffer — sem múltiplos registradores no colchete
     mov     r9, rbx
-    shl     r9, 6                  ; linha * 64 bytes
-    lea     r9, [r9 + rcx*4]       ; + coluna * 4 bytes
+    shl     r9, 6
+    lea     r9, [r9 + rcx*4]
     mov     eax, [rdi + rcx*4]
     mov     [r15 + r9], eax
 
-    ; Lê pixel do sprite — cálculo fora do colchete
     mov     r10, rbx
-    shl     r10, 4                  ; linha * 16 bytes
-    add     r10, rcx                ; + coluna
+    shl     r10, 4
+    add     r10, rcx
     movzx   edx, byte [r8 + r10]
 
     test    edx, edx
     jz      .skip_px
     cmp     edx, 1
     je      .cor_borda
-    mov     dword [rdi + rcx*4], 0xFF00F5D4   ; Ciano neon
+    mov     dword [rdi + rcx*4], 0xFF00F5D4
     jmp     .skip_px
 .cor_borda:
-    mov     dword [rdi + rcx*4], 0xFF0A0414   ; Escuro
+    mov     dword [rdi + rcx*4], 0xFF0A0414
 .skip_px:
     inc     ecx
     cmp     ecx, TAM_CURSOR
@@ -352,29 +356,35 @@ cursor_desenhar_novo:
     ret
 
 ; ==========================================
-; ATUALIZAR CURSOR — SÓ move o ponteiro, NÃO redesenha janelas!
+; ATUALIZAR CURSOR — só move, só restaura a posição antiga
 ; ==========================================
 ws_atualizar_cursor:
     call    mouse_ler_posicao
-    cmp     byte [cursor_salvo], 0
-    je      .mover
+
+    ; Se posição não mudou, não faz nada
     cmp     edi, [cursor_x]
     jne     .mover
     cmp     esi, [cursor_y]
     jne     .mover
-    jmp     .desenhar_cursor
+    ret
 
 .mover:
     push    rdi
     push    rsi
+
+    ; Restaura o fundo da posição ANTIGA
     call    cursor_restaurar_fundo
+
     pop     rsi
     pop     rdi
+
+    ; Atualiza para nova posição
     mov     [cursor_x], edi
     mov     [cursor_y], esi
 
-.desenhar_cursor:
+    ; Desenha na NOVA posição
     call    cursor_desenhar_novo
+
     ret
 
 ; ==========================================
@@ -421,5 +431,11 @@ ws_verificar_clique:
     mov     rax, -1
     ret
 
+; ==========================================
+; APRESENTAR — Chamar a cada quadro no loop principal
+; ==========================================
 ws_apresentar:
+    ; Ordem correta: janelas primeiro, cursor por cima
+    call    ws_desenhar_janelas
+    call    ws_atualizar_cursor
     ret
