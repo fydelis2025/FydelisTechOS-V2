@@ -1,11 +1,13 @@
 ; ======================================
 ; Kernel FydelisTech OS - v4.2 COMPLETO (CORRIGIDO)
-; Transicao 16/32/64-bit + VESA + GDT/IDT + Deteccao Real
+; Transicao 16/32/64-bit + VESA + BSS Zero + GDT/IDT + Deteccao Real
 ; Salvador - Bahia
 ; ======================================
 DEFAULT REL
 %include "fydelterm.inc"
 
+extern __bss_start
+extern __bss_end
 extern gdt_init
 extern idt_init
 extern kernel_exec_bin
@@ -223,6 +225,7 @@ gdt64_boot_desc:
 BITS 64
 start:
     cli
+    cld                             ; Garante direcao crescente para rep stosb
     mov     ax, 0x10
     mov     ds, ax
     mov     es, ax
@@ -231,7 +234,16 @@ start:
     mov     ss, ax
     mov     rsp, 0x90000
 
-    ; 0. Instala GDT definitiva (CS=0x08, TSS=0x28) e IDT 64-bit (seletor 0x08)
+    ; 0a. Zera toda a secao .bss (__bss_start ate __bss_end)
+    lea     rdi, [rel __bss_start]
+    lea     rcx, [rel __bss_end]
+    sub     rcx, rdi                ; RCX = tamanho total do .bss em bytes
+    jbe     .bss_limpo              ; Evita underflow se .bss tiver tamanho 0
+    xor     eax, eax
+    rep     stosb
+.bss_limpo:
+
+    ; 0b. Instala GDT definitiva (CS=0x08, TSS=0x28) e IDT 64-bit (seletor 0x08)
     call    gdt_init
     call    idt_init
 
