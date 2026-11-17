@@ -37,7 +37,7 @@ extern construir_estrutura_sistema
 extern hosts_inicializar
 extern fydlog_inicializar
 
-extern pci_init
+global pci_init
 extern usb_scan_controllers
 
 global bytes_para_gb
