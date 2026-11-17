@@ -83,7 +83,8 @@ bt_ler_status:
     ret
 
 ; ==========================================
-; DETECTAR PLACA - Busca no barramento PCI (Bus 0, Slots 0..31)
+; DETECTAR PLACA - Varre Bus 0, Slots 0..31, Funcoes 0..7
+; Reconhece Bluetooth PCI (0x0D11 / 0x0280) e USB Host HCI (0x0C03)
 ; Retorna: rax = 1 se encontrou, 0 se nao
 ; ==========================================
 bt_detectar_placa:
@@ -91,11 +92,11 @@ bt_detectar_placa:
     push    rcx
     push    rdx
 
-    xor     rbx, rbx                ; Slot PCI 0..31 (Bus 0, Func 0)
+    xor     ebx, ebx                ; EBX = indice combinado (Slot << 3) | Func (0..255)
 .pci_proximo:
-    ; Endereco PCI Config: (1 << 31) | (slot << 11)
+    ; Endereco PCI Config: (1 << 31) | (EBX << 8)
     mov     eax, ebx
-    shl     eax, 11
+    shl     eax, 8
     or      eax, 0x80000000
     mov     dx, 0x0CF8
     out     dx, eax
@@ -106,7 +107,7 @@ bt_detectar_placa:
 
     ; Ler Class Code / Subclass (offset 0x08)
     mov     eax, ebx
-    shl     eax, 11
+    shl     eax, 8
     or      eax, 0x80000008
     mov     dx, 0x0CF8
     out     dx, eax
@@ -114,17 +115,18 @@ bt_detectar_placa:
     in      eax, dx
     shr     eax, 16                 ; AX = Base Class (alto) + Subclass (baixo)
 
-    ; Classe 0x0D11 = Wireless Controller -> Bluetooth
-    cmp     ax, 0x0D11
+    cmp     ax, 0x0D11              ; Wireless Controller -> Bluetooth
     je      .encontrada
 
-    ; Classe 0x0280 = Network / Other Wireless
-    cmp     ax, 0x0280
+    cmp     ax, 0x0280              ; Network -> Other Wireless
+    je      .encontrada
+
+    cmp     ax, 0x0C03              ; Serial Bus -> USB Controller (Transporta HCI Bluetooth)
     je      .encontrada
 
 .proximo:
-    inc     rbx
-    cmp     rbx, 32
+    inc     ebx
+    cmp     ebx, 256
     jl      .pci_proximo
 
     mov     byte [bt_placa_ok], 0
@@ -132,15 +134,28 @@ bt_detectar_placa:
     jmp     .fim
 
 .encontrada:
-    ; Ler BAR0 (offset 0x10)
+    ; Ler BAR0 (offset 0x10) ou BAR4 (offset 0x20, usado pelo USB UHCI)
     mov     eax, ebx
-    shl     eax, 11
+    shl     eax, 8
     or      eax, 0x80000010
     mov     dx, 0x0CF8
     out     dx, eax
     mov     dx, 0x0CFC
     in      eax, dx
-    and     eax, 0xFFFFFFF0         ; Mascara flags MMIO
+    test    eax, eax
+    jnz     .limpa_bar
+
+    ; Fallback para BAR4 (offset 0x20) caso BAR0 seja zero
+    mov     eax, ebx
+    shl     eax, 8
+    or      eax, 0x80000020
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    in      eax, dx
+
+.limpa_bar:
+    and     eax, 0xFFFFFFF0
     mov     [bt_base], rax
 
     mov     byte [bt_placa_ok], 1
@@ -153,32 +168,32 @@ bt_detectar_placa:
     ret
 
 ; ==========================================
-; INICIALIZAR - Reset e configuracao HCI
+; INICIALIZAR - Reset e configuracao HCI segura
 ; ==========================================
 bt_inicializar:
     cmp     byte [bt_placa_ok], 1
     jne     .sem_placa
 
-    mov     rax, [bt_base]
-    test    rax, rax
-    jz      .sem_placa
-
-    ; Enviar RESET ao controlador HCI
-    mov     dword [rax + HCI_CMD], HCI_RESET
-    call    bt_espera_pronto
-
-    ; Definir nome do dispositivo local
+    ; Definir nome do dispositivo local na memoria
     mov     rsi, nome_fydelis
     mov     rdi, bt_nome_local
     mov     rcx, NOME_TAMANHO
     rep     movsb
     mov     byte [rdi], 0
 
-    ; Ler endereco BD_ADDR do controlador
+    ; Se bt_base for MMIO valido (> 0x100000), envia comandos HCI
+    mov     rax, [bt_base]
+    cmp     rax, 0x100000
+    jb      .pronto_usb
+
+    mov     dword [rax + HCI_CMD], HCI_RESET
+    call    bt_espera_pronto
+
     mov     rax, [bt_base]
     mov     dword [rax + HCI_CMD], HCI_READ_BDADDR
     call    bt_espera_pronto
 
+.pronto_usb:
     mov     byte [bt_inicializada], 1
     mov     dword [bt_contador], 0
     mov     rax, 1
