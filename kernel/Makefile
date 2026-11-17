@@ -92,6 +92,7 @@ OBJS = \
     ../pentest/pentest.o    \
     ../boot/gdt.o           \
     ../boot/idt.o           \
+    ../boot/cpu.o           \
     ../boot/interrupts.o    \    
     ../drivers/pci.o        \
     ../drivers/particao.o   \
