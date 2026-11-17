@@ -1,5 +1,5 @@
 ; ==========================================
-; VESAFB.ASM — CORRIGIDO E OTIMIZADO
+; VESAFB.ASM — CORRIGIDO, OTIMIZADO E COM VSYNC
 ; FydelisTech OS v4.2 · Salvador • Bahia 🇧🇷
 ; ==========================================
 BITS 64
@@ -46,6 +46,32 @@ global fb_limpar
 global fb_get_geometria
 global fb_desenhar_pixel
 global fb_preencher_tela
+global fb_sincronizar_vsync
+
+; ==========================================
+; ⏱️ SINCRONIZAÇÃO VERTICAL (VSync) — Porta 0x3DA
+; Aguarda o feixe de vídeo atingir o retrace
+; ==========================================
+fb_sincronizar_vsync:
+    push    rdx
+    push    rax
+
+    ; 1. Aguarda o término do retrace anterior (caso já esteja ativo)
+    mov     dx, 0x3DA
+.aguardar_fim:
+    in      al, dx
+    test    al, 8
+    jnz     .aguardar_fim
+
+    ; 2. Aguarda o início do novo ciclo de retrace vertical
+.aguardar_inicio:
+    in      al, dx
+    test    al, 8
+    jz      .aguardar_inicio
+
+    pop     rax
+    pop     rdx
+    ret
 
 ; ==========================================
 ; INICIALIZAÇÃO — chamar APÓS preencher fb_base e resolução
@@ -83,7 +109,7 @@ fb_inicializar:
     ret
 
 ; ==========================================
-; LIMPAR TELA com cor sólida
+; LIMPAR TELA com cor sólida (Com VSync)
 ; Entrada: rdi = cor (0xAARRGGBB)
 ; ==========================================
 fb_limpar:
@@ -91,6 +117,10 @@ fb_limpar:
     je      .fim
 
     push    rbx
+    
+    ; Sincroniza com a taxa de atualização antes de limpar
+    call    fb_sincronizar_vsync
+
     mov     rbx, [rel fb_base]
     mov     r8d, [rel fb_pitch]       ; Leitura 32-bit zera os 32 bits superiores
     mov     edx, [rel fb_altura]
@@ -149,7 +179,7 @@ fb_desenhar_pixel:
     ret
 
 ; ==========================================
-; PREENCHER TELA (Corrigido com Pitch)
+; PREENCHER TELA (Corrigido com Pitch e VSync)
 ; Entrada: rdi = cor (0xAARRGGBB)
 ; ==========================================
 fb_preencher_tela:
@@ -157,6 +187,10 @@ fb_preencher_tela:
     je      .fim
 
     push    rbx
+    
+    ; Sincroniza com o VSync para eliminar tearing e desacelerar o loop agressivo
+    call    fb_sincronizar_vsync
+
     mov     rbx, [rel fb_base]
     mov     eax, edi                  ; Cor 32-bit para stosd
     mov     r8d, [rel fb_pitch]       ; Bytes por linha
