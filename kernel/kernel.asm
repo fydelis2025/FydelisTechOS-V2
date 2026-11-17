@@ -38,7 +38,7 @@ extern hosts_inicializar
 extern fydlog_inicializar
 
 ;extern pci_init
-global usb_scan_controllers
+;extern usb_scan_controllers
 
 global bytes_para_gb
 global _entry16
@@ -368,7 +368,7 @@ start:
     call fydlog_inicializar
     ; --- Inicialização dos Subsistemas de Hardware ---
     ;call pci_init              ; Inicializa/prepara estruturas PCI (se aplicável)
-    call usb_scan_controllers  ; Executa a varredura das controladoras USB (UHCI, OHCI, EHCI, xHCI)
+    ;call usb_scan_controllers  ; Executa a varredura das controladoras USB (UHCI, OHCI, EHCI, xHCI)
     ; ======================================
     ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
     ; ======================================
