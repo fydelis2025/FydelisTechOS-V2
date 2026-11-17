@@ -86,6 +86,7 @@ OBJS = \
     syscall_handler.o       \
     stubs_kernel.o          \
     fyd_formatos.o          \
+    panic.o                 \
     estrutura.o             \
     energia.o               \
     ../pentest/pentest.o    \
