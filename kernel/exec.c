@@ -116,6 +116,43 @@ static const ItemMenuIniciar itens_menu[] = {
 #define TOTAL_ITENS_MENU (int)(sizeof(itens_menu) / sizeof(itens_menu[0]))
 
 /* ============================================================================
+ * DOUBLE BUFFER (BACKBUFFER EM RAM) — Elimina flicker ao arrastar janelas
+ * ============================================================================ */
+#define MAX_FB_PIXELS (1920 * 1080)
+static uint32_t  backbuffer_ram[MAX_FB_PIXELS] __attribute__((aligned(16)));
+static uint32_t *vram_real_base = 0;
+
+static void backbuffer_iniciar_frame(void) {
+    if (!vram_real_base && fb_base) {
+        vram_real_base = fb_base;
+    }
+    if (vram_real_base) {
+        fb_base = backbuffer_ram; /* Todas as funções desenham na RAM */
+    }
+}
+
+static void backbuffer_apresentar_frame(int L, int A) {
+    if (!vram_real_base) return;
+
+    fb_base = vram_real_base; /* Restaura ponteiro da VRAM para o cursor HW/SW */
+
+    uint32_t stride_pixels = (fb_pitch > 0) ? (fb_pitch / 4) : (uint32_t)L;
+    uint64_t total_pixels  = (uint64_t)stride_pixels * (uint64_t)A;
+    if (total_pixels > MAX_FB_PIXELS) total_pixels = MAX_FB_PIXELS;
+
+    /* Copia 8 bytes (2 pixels) por ciclo usando rep movsq */
+    uint64_t qwords = total_pixels / 2;
+    void *dst = (void *)vram_real_base;
+    const void *src = (const void *)backbuffer_ram;
+    __asm__ volatile (
+        "rep movsq"
+        : "+D"(dst), "+S"(src), "+c"(qwords)
+        :
+        : "memory"
+    );
+}
+
+/* ============================================================================
  * FONTE BITMAP 8x16 COMPLETA (ASCII 32..126)
  * ============================================================================ */
 static const uint8_t fonte_8x16[95][16] = {
@@ -1177,6 +1214,7 @@ static int exibir_desktop_grafico(int L, int A) {
 
         if (precisa_redesenhar) {
             uint64_t t_frame_ini = ler_tsc();
+            backbuffer_iniciar_frame();
             ws_inicializar();
 
             /* 1. Fundo do Desktop */
