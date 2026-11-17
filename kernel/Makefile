@@ -92,9 +92,7 @@ OBJS = \
     estrutura.o \
     energia.o \
     ../pentest/pentest.o \
-    ../boot/gdt.o \
-    ../boot/interrupts.o \
-    ../boot/cpu.o \
+    ../boot/gdt.o \    
     ../drivers/pci.o \
     ../drivers/particao.o \
     ../drivers/disco.o \
