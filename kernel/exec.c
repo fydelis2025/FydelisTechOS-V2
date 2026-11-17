@@ -57,6 +57,7 @@ extern uint64_t obter_tamanho_disco(void);
 
 //Extensões fyd
 extern const char *fs_ler_config_padrao(void);
+extern FydelisApp app_visualizador_logs;
 
 /* Modos de exibição da Janela Principal */
 enum {
