@@ -922,13 +922,17 @@ static void exibir_tela_login(int L, int A) {
     }
 }
 
-/* Pontes gráficas públicas usadas pelos aplicativos em apps/ */
+#include "../apps/apps.h"
+
 void gui_retangulo(int x, int y, int w, int h, uint32_t cor) {
     desenhar_retangulo_solido(x, y, w, h, cor);
 }
 
 void gui_borda(int x, int y, int w, int h, uint32_t cor) {
-    desenhar_caixa_com_borda(x, y, w, h, 1, cor, 0x00000000);
+    desenhar_retangulo_solido(x, y, w, 1, cor);
+    desenhar_retangulo_solido(x, y + h - 1, w, 1, cor);
+    desenhar_retangulo_solido(x, y, 1, h, cor);
+    desenhar_retangulo_solido(x + w - 1, y, 1, h, cor);
 }
 
 void gui_texto(int x, int y, const char *str, uint32_t cor) {
