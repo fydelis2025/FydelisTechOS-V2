@@ -82,7 +82,7 @@ fydlog_inicializar:
     mov byte [rel lock_log], 0
     mov byte [rel inicializado], 1
 
-    ; Registra primeira entrada e exibe no terminal
+    ; Exibe confirmacao no console de boot (antes do modo grafico)
     lea rsi, [rel msg_inicio]
     call print_string
     call print_newline
@@ -101,7 +101,7 @@ fydlog_inicializar:
 
 ; ============================================================================
 ; fydlog_escrever(rdi = tipo, rsi = ponteiro_mensagem)
-; Grava no buffer .flog em RAM e imprime no console do kernel
+; Grava apenas no buffer .flog em RAM (seguro para VGA e VESA)
 ; ============================================================================
 fydlog_escrever:
     push rax
@@ -138,18 +138,18 @@ fydlog_escrever:
 
 .etq_info:
     lea r8, [rel etiqueta_info]
-    jmp .gravar_e_imprimir
+    jmp .gravar_buffer
 .etq_aviso:
     lea r8, [rel etiqueta_aviso]
-    jmp .gravar_e_imprimir
+    jmp .gravar_buffer
 .etq_erro:
     lea r8, [rel etiqueta_erro]
-    jmp .gravar_e_imprimir
+    jmp .gravar_buffer
 .etq_critico:
     lea r8, [rel etiqueta_critico]
 
-.gravar_e_imprimir:
-    ; 1. Grava etiqueta + mensagem + '\n' no buffer_logs (.flog)
+.gravar_buffer:
+    ; Grava etiqueta + mensagem + '\n' no buffer_logs (.flog)
     mov rsi, r8
     call anexar_str_buffer
 
@@ -158,15 +158,7 @@ fydlog_escrever:
 
     call anexar_nl_buffer
 
-    ; 2. Imprime no terminal do kernel (print_string espera ponteiro em RSI)
-    mov rsi, r8
-    call print_string
-
-    mov rsi, rdx
-    call print_string
-    call print_newline
-
-    ; Libera spinlock
+    ; Libera spinlock sem tocar no console VGA/VESA
     mov byte [rel lock_log], 0
 
     pop rdi
@@ -178,7 +170,7 @@ fydlog_escrever:
     ret
 
 ; ============================================================================
-; fydlog_ler_todos() — Imprime todo o historico de logs gravados na RAM
+; fydlog_ler_todos() — Imprime todo o historico de logs gravados no terminal
 ; ============================================================================
 fydlog_ler_todos:
     push rsi
