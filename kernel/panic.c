@@ -6,7 +6,6 @@ extern uint32_t  fb_largura;
 extern uint32_t  fb_altura;
 extern uint32_t  fb_pitch;
 
-extern void gpu_escrever_titulo(const char *texto, int x, int y, uint32_t cor);
 extern void gpu_escrever_texto(const char *texto, int x, int y, uint32_t cor);
 extern void print_string(const char *s);
 extern void print_newline(void);
@@ -92,12 +91,11 @@ void kernel_panic_handler(
         int L = (int)fb_largura;
         int A = (int)fb_altura;
 
-        /* Fundo vermelho-escuro cyberpunk com borda de alerta */
         panic_retangulo(0, 0, L, A, 0xFF1A050D);
         panic_retangulo(0, 0, L, 48, 0xFF991B1B);
         panic_retangulo(0, 48, L, 3, 0xFFFF4D6D);
 
-        gpu_escrever_titulo("FYDELISTECH OS — KERNEL PANIC (PARADA DE SEGURANCA)", 24, 12, 0xFFFFFFFF);
+        gpu_escrever_texto("FYDELISTECH OS — KERNEL PANIC (PARADA DE SEGURANCA)", 24, 16, 0xFFFFFFFF);
 
         int bx = 40;
         int by = 80;
