@@ -1,5 +1,5 @@
 ; ======================================
-; Kernel FydelisTech OS - v4.2 COMPLETO
+; Kernel FydelisTech OS - v4.2 COMPLETO (CORRIGIDO)
 ; Transicao 16/32/64-bit + VESA + Deteccao Real
 ; Salvador - Bahia
 ; ======================================
@@ -33,7 +33,6 @@ extern bt_detectar_placa
 extern bt_inicializar
 extern inicializar_nic_mmio
 
-extern construir_estrutura_sistema
 extern hosts_inicializar
 extern fydlog_inicializar
 
@@ -102,7 +101,7 @@ _entry16:
     cmp     ax, 0x004F
     jne     .sem_vesa
 
-    ; 2. Tenta modo 0x145; se falhar, usa 0x118 (1024x768 padrao QEMU)
+    ; 2. Tenta modo 0x145; se falhar, usa 0x118 (1024x768 padrao)
     mov     bx, 0x0145
     mov     cx, bx
     mov     di, 0x5200
@@ -159,7 +158,6 @@ _entry32:
     mov     esp, 0x90000
 
     ; 5. Configurar Paginacao Identity Map de 4 GB (cobre Kernel + Framebuffer LFB)
-    ; 0x1000 = PML4 | 0x2000 = PDPT | 0x3000..0x6FFF = 4 PDs (2048 * 2MB = 4GB)
     mov     edi, 0x1000
     xor     eax, eax
     mov     ecx, 6144               ; Zera 24 KB (0x1000..0x6FFF)
@@ -230,27 +228,25 @@ start:
     mov     ss, ax
     mov     rsp, 0x90000
 
-    ; Transferir dados VESA salvos em 0x7000 respeitando o tamanho exato
-    mov     eax, [0x7000]
-    mov     [fb_base], eax
-    mov     ax, [0x7008]
-    mov     [fb_largura], ax
-    mov     ax, [0x700A]
-    mov     [fb_altura], ax
-    mov     ax, [0x700C]
-    mov     [fb_pitch], ax
-    mov     al, [0x700E]
-    mov     [fb_bpp], al
+    ; Transferir dados VESA salvos em 0x7000 com extensao zero para 64/32 bits
+    mov     eax, [0x7000]           ; Leitura 32-bit zera os 32 bits superiores de RAX
+    mov     [fb_base], rax          ; Salva ponteiro completo de 64 bits
+    movzx   eax, word [0x7008]
+    mov     [fb_largura], eax
+    movzx   eax, word [0x700A]
+    mov     [fb_altura], eax
+    movzx   eax, word [0x700C]
+    mov     [fb_pitch], eax
+    movzx   eax, byte [0x700E]
+    mov     [fb_bpp], eax
 
     ; Inicializa o driver de video apenas se fb_base for valido
-    cmp     dword [fb_base], 0
+    cmp     qword [fb_base], 0
     je      .pula_fb
     call    fb_inicializar
 
-    ; Pinta a tela inicial usando movzx de 16 bits
+    ; Pinta a tela inicial
     mov     rdi, COR_FUNDO
-    movzx   esi, word [fb_largura]
-    movzx   edx, word [fb_altura]
     call    gpu_preencher_tela
 .pula_fb:
 
@@ -362,30 +358,23 @@ start:
     ; FASE 4 - ESTRUTURA DE DIRETORIOS (/fyd)
     ; ======================================
     call    construir_estrutura_sistema
-    ; Inicializa a tabela de nomes e registra /fyd/rede/cfg/hosts.fcfg
-    call hosts_inicializar
-    ; Registra /fyd/dados/logs/sistema.flog
-    call fydlog_inicializar
-    ; --- Inicialização dos Subsistemas de Hardware ---
-    ;call pci_init              ; Inicializa/prepara estruturas PCI (se aplicável)
-    ;call usb_scan_controllers  ; Executa a varredura das controladoras USB (UHCI, OHCI, EHCI, xHCI)
+    call    hosts_inicializar
+    call    fydlog_inicializar
+
     ; ======================================
     ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
     ; ======================================
     lea     rsi, [msg_fase_hw]
     call    print_string
 
-    ; 1. Inicializa controlador de Audio PCI (AC97 / Intel HDA)
     call    audio_init
 
-    ; 2. Detecta e inicializa controlador Bluetooth HCI
     call    bt_detectar_placa
     test    rax, rax
     jz      .sem_bt
     call    bt_inicializar
 .sem_bt:
 
-    ; 3. Inicializa placa de rede Intel E1000
     call    inicializar_nic_mmio
 
     lea     rsi, [msg_hw_ok]
@@ -404,6 +393,7 @@ start:
     je      .modo_terminal
     cmp     al, '2'
     je      .modo_grafico
+    pause                           ; Reduz consumo de CPU durante espera
     jmp     .escolha
 
 .cpu_erro:
@@ -417,13 +407,11 @@ start:
 ; ======================================
 .modo_grafico:
     mov     rdi, COR_ROXO_ESCURO
-    movzx   esi, word [fb_largura]
-    movzx   edx, word [fb_altura]
     call    gpu_preencher_tela
 
     ; Barra de progresso centralizada
-    movzx   r10, word [fb_largura]
-    movzx   r11, word [fb_altura]
+    mov     r10d, [fb_largura]
+    mov     r11d, [fb_altura]
     mov     r12, r10
     shr     r12, 1
     mov     r13, 36
@@ -474,6 +462,7 @@ start:
 
     mov     rcx, 350000
 .pausa:
+    pause
     dec     rcx
     jnz     .pausa
     inc     ebx
@@ -484,15 +473,15 @@ start:
     call    print_string
     call    print_newline
 
-    ; Alinha pilha corretamente para chamada C
-    mov     rax, rsp
-    and     rax, 15
-    test    rax, rax
-    jz      .pilha_ok
-    sub     rsp, 8
-.pilha_ok:
+    ; Garante alinhamento estrito de 16 bytes na pilha antes de chamar C (System V ABI)
+    push    rbp
+    mov     rbp, rsp
+    and     rsp, -16
 
     call    kernel_exec_bin
+
+    mov     rsp, rbp
+    pop     rbp
 
     lea     rsi, [msg_encerrado]
     call    print_string
@@ -504,8 +493,6 @@ start:
 ; ======================================
 .modo_terminal:
     mov     rdi, COR_FUNDO
-    movzx   esi, word [fb_largura]
-    movzx   edx, word [fb_altura]
     call    gpu_preencher_tela
     lea     rsi, [msg_cabecalho]
     call    print_string
@@ -518,7 +505,10 @@ main_loop:
 .le_tecla:
     call    get_key
     cmp     al, KEY_NULL
-    je      .le_tecla
+    jne     .processa_tecla
+    pause                           ; Alivia CPU enquanto aguarda digitacao
+    jmp     .le_tecla
+.processa_tecla:
     cmp     al, KEY_ENTER
     je      .executa
     cmp     al, KEY_BACKSPACE
