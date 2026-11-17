@@ -290,7 +290,7 @@ debug: fydelterm.img
 # 🧹 LIMPAR
 # ==========================================
 clean:
-	@echo "🧹 Limpando..."
+	@echo "Limpando..."
 	rm -f *.o *.d
 	rm -f ../boot/*.o ../boot/*.d
 	rm -f ../drivers/*.o ../drivers/*.d
@@ -300,10 +300,9 @@ clean:
 	rm -f ../virtual/*.o ../virtual/*.d
 	rm -f ../system/*.o ../system/*.d
 	rm -f ../idioma/*.o ../idioma/*.d
-	rm -f ../core/security/*.o ../core/security/*.d
-    rm -f ../apps/*.o ../apps/*.d ../apps/*/*.o ../apps/*/*.d
+	rm -f ../apps/acessorios/*.o ../apps/acessorios/*.d
 	rm -f *.bin *.EFI fydelterm.img boot_flp.img fydelterm.iso
-	@echo "✅ Limpo!"
+	@echo "Limpo!"
 
 distclean: clean
 	rm -f $(HEADERS_ASSETS)
