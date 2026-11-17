@@ -49,30 +49,40 @@ global fb_preencher_tela
 global fb_sincronizar_vsync
 
 ; ==========================================
-; ⏱️ SINCRONIZAÇÃO VERTICAL (VSync) — Porta 0x3DA
-; Aguarda o feixe de vídeo atingir o retrace
+; ⏱️ SINCRONIZAÇÃO SEGURA (Com Timeout para VMSVGA)
+; Evita travamento quando a GPU virtual não emula 0x3DA
 ; ==========================================
 fb_sincronizar_vsync:
     push    rdx
     push    rax
+    push    rcx
 
-    ; 1. Aguarda o término do retrace anterior (caso já esteja ativo)
     mov     dx, 0x3DA
+    mov     ecx, 50000          ; Limite máximo de ciclos (Timeout anti-travamento)
 .aguardar_fim:
     in      al, dx
     test    al, 8
+    jz      .fase2
+    pause
+    dec     ecx
     jnz     .aguardar_fim
+    jmp     .sair_vsync
 
-    ; 2. Aguarda o início do novo ciclo de retrace vertical
+.fase2:
+    mov     ecx, 50000
 .aguardar_inicio:
     in      al, dx
     test    al, 8
-    jz      .aguardar_inicio
+    jnz     .sair_vsync
+    pause
+    dec     ecx
+    jnz     .aguardar_inicio
 
+.sair_vsync:
+    pop     rcx
     pop     rax
     pop     rdx
     ret
-
 ; ==========================================
 ; INICIALIZAÇÃO — chamar APÓS preencher fb_base e resolução
 ; ==========================================
