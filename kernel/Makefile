@@ -94,6 +94,7 @@ OBJS = \
     ../boot/idt.o           \
     ../boot/interrupts.o    \
     ../boot/cpu.o           \
+	../boot/apic.o           \
     ../drivers/pci.o        \
     ../drivers/particao.o   \
     ../drivers/disco.o      \
