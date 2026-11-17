@@ -1377,8 +1377,11 @@ static int exibir_desktop_grafico(int L, int A) {
                 desenhar_menu_iniciar_categorizado(menu_x, menu_y, menu_w, menu_h, mx, my);
             }
 
-            ciclos_ativos += (ler_tsc() - t_frame_ini);
-            precisa_redesenhar = 0;
+            /* Envia o frame inteiro pronto para a tela de uma vez (Zero Flicker!) */
+             backbuffer_apresentar_frame(L, A);
+
+             ciclos_ativos += (ler_tsc() - t_frame_ini);
+             precisa_redesenhar = 0;
         }
 
         ws_atualizar_cursor();
