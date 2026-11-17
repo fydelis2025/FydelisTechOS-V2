@@ -65,17 +65,17 @@ audio_ler_status:
     ret
 
 ; --------------------------------------
-; Inicializacao via Barramento PCI (Bus 0, Slots 0..31)
+; Inicializacao via Barramento PCI (Bus 0, Slots 0..31, Funcoes 0..7)
 ; --------------------------------------
 audio_init:
     push    rbx
     push    rcx
     push    rdx
 
-    xor     rbx, rbx                ; Slot PCI 0..31
+    xor     ebx, ebx                ; EBX = (Slot << 3) | Func (0..255)
 .pci_loop:
     mov     eax, ebx
-    shl     eax, 11
+    shl     eax, 8
     or      eax, 0x80000000
     mov     dx, 0x0CF8
     out     dx, eax
@@ -86,7 +86,7 @@ audio_init:
 
     ; Ler Class Code / Subclass (offset 0x08)
     mov     eax, ebx
-    shl     eax, 11
+    shl     eax, 8
     or      eax, 0x80000008
     mov     dx, 0x0CF8
     out     dx, eax
@@ -101,18 +101,38 @@ audio_init:
     je      .init_hda
 
 .proximo:
-    inc     rbx
-    cmp     rbx, 32
+    inc     ebx
+    cmp     ebx, 256
     jl      .pci_loop
 
     mov     dword [audio_type], 0
     jmp     .fim
 
 .init_ac97:
-    ; Ler BAR1 (Mixer I/O Base, offset 0x14)
+    ; Habilitar I/O Space (bit 0) e Bus Master (bit 2) no PCI Command (offset 0x04)
     mov     eax, ebx
-    shl     eax, 11
-    or      eax, 0x80000014
+    shl     eax, 8
+    or      eax, 0x80000004
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    in      eax, dx
+    or      eax, 0x05
+    mov     ecx, eax
+
+    mov     eax, ebx
+    shl     eax, 8
+    or      eax, 0x80000004
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    mov     eax, ecx
+    out     dx, eax
+
+    ; Ler BAR0 (Mixer I/O Base - NAMBAR, offset 0x10)
+    mov     eax, ebx
+    shl     eax, 8
+    or      eax, 0x80000010
     mov     dx, 0x0CF8
     out     dx, eax
     mov     dx, 0x0CFC
@@ -122,7 +142,7 @@ audio_init:
     mov     dword [audio_type], 1
 
     ; Reset e liga DAC/Mixer do AC97
-    mov     dx, ax
+    mov     dx, [audio_base]
     add     dx, AC97_RESET
     xor     ax, ax
     out     dx, ax
@@ -137,9 +157,29 @@ audio_init:
     jmp     .fim
 
 .init_hda:
+    ; Habilitar Memory Space (bit 1) e Bus Master (bit 2) no PCI Command (offset 0x04)
+    mov     eax, ebx
+    shl     eax, 8
+    or      eax, 0x80000004
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    in      eax, dx
+    or      eax, 0x06
+    mov     ecx, eax
+
+    mov     eax, ebx
+    shl     eax, 8
+    or      eax, 0x80000004
+    mov     dx, 0x0CF8
+    out     dx, eax
+    mov     dx, 0x0CFC
+    mov     eax, ecx
+    out     dx, eax
+
     ; Ler BAR0 (MMIO Base, offset 0x10)
     mov     eax, ebx
-    shl     eax, 11
+    shl     eax, 8
     or      eax, 0x80000010
     mov     dx, 0x0CF8
     out     dx, eax
