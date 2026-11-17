@@ -75,6 +75,7 @@ OBJS = \
     pmm.o                   \
     paging.o                \
     apic.o					\
+    idt.o					\
     heap.o                  \
     context.o               \
     scheduler.o             \
@@ -91,8 +92,7 @@ OBJS = \
     estrutura.o             \
     energia.o               \
     ../pentest/pentest.o    \
-    ../boot/gdt.o           \
-    ../boot/idt.o           \
+    ../boot/gdt.o           \    
     ../boot/interrupts.o    \
     ../boot/cpu.o           \	
     ../drivers/pci.o        \
