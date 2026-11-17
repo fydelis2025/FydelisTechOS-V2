@@ -1,9 +1,24 @@
 #include "../include/fyd_formatos.h"
 
-/* Funções do FS e Heap já existentes no seu kernel */
-extern void *kmalloc(uint64_t size);
-extern void  kfree(void *ptr);
-extern int   fs_escrever_arquivo(const char *caminho, const void *dados, uint64_t tamanho);
+/* =========================================================================
+ * ARENA DE EXECUÇÃO E REGISTRO DE ARQUIVOS INSTALADOS (Autônomo no Kernel)
+ * ========================================================================= */
+#define FYD_MAX_EXEC_MEM    (512 * 1024) /* 512 KiB reservados para rodar apps .fyd */
+#define FYD_MAX_PKG_ARQS    32
+#define FYD_MAX_PKG_STORAGE (256 * 1024) /* 256 KiB para arquivos extraídos de .fpkg */
+
+static uint8_t fyd_exec_arena[FYD_MAX_EXEC_MEM] __attribute__((aligned(16)));
+
+typedef struct {
+    char     caminho[64];
+    uint32_t tamanho;
+    uint32_t offset_dados;
+    int      ativo;
+} FydArqInstalado;
+
+static FydArqInstalado fyd_tabela_arqs[FYD_MAX_PKG_ARQS];
+static uint8_t         fyd_storage_arqs[FYD_MAX_PKG_STORAGE];
+static uint32_t        fyd_storage_usado = 0;
 
 static void fyd_memcpy(void *dst, const void *src, uint64_t n) {
     uint8_t *d = (uint8_t *)dst;
@@ -30,6 +45,43 @@ static int fyd_strlen(const char *s) {
     return len;
 }
 
+static void fyd_strcpy_lim(char *dst, const char *src, int max_len) {
+    int i = 0;
+    while (src[i] && i < max_len - 1) {
+        dst[i] = src[i];
+        i++;
+    }
+    dst[i] = '\0';
+}
+
+/* Grava um arquivo extraído de .fpkg na tabela interna do kernel */
+static int fyd_registrar_arquivo_extraido(const char *caminho, const void *dados, uint32_t tamanho) {
+    if (fyd_storage_usado + tamanho > FYD_MAX_PKG_STORAGE) return -1;
+
+    int slot = -1;
+    for (int i = 0; i < FYD_MAX_PKG_ARQS; i++) {
+        if (fyd_tabela_arqs[i].ativo &&
+            fyd_strncmp(fyd_tabela_arqs[i].caminho, caminho, 64) == 0) {
+            slot = i; /* Atualiza arquivo já existente */
+            break;
+        }
+        if (!fyd_tabela_arqs[i].ativo && slot == -1) {
+            slot = i;
+        }
+    }
+
+    if (slot == -1) return -2;
+
+    fyd_strcpy_lim(fyd_tabela_arqs[slot].caminho, caminho, 64);
+    fyd_tabela_arqs[slot].tamanho      = tamanho;
+    fyd_tabela_arqs[slot].offset_dados = fyd_storage_usado;
+    fyd_tabela_arqs[slot].ativo        = 1;
+
+    fyd_memcpy(&fyd_storage_arqs[fyd_storage_usado], dados, tamanho);
+    fyd_storage_usado += tamanho;
+    return 0;
+}
+
 /* =========================================================================
  * 1. CARREGADOR DE EXECUTÁVEIS (.fyd)
  * ========================================================================= */
@@ -37,9 +89,9 @@ int fyd_validar_executavel(const void *buffer, uint64_t tamanho_buf, FydExecHead
     if (!buffer || tamanho_buf < sizeof(FydExecHeader)) return -1;
 
     const FydExecHeader *hdr = (const FydExecHeader *)buffer;
-    if (hdr->magic != FYD_EXEC_MAGIC) return -2; /* Não é um arquivo .fyd válido */
-    if (sizeof(FydExecHeader) + hdr->tamanho_codigo > tamanho_buf) return -3; /* Truncado */
-    if (hdr->entry_offset >= hdr->tamanho_codigo) return -4; /* Entry point inválido */
+    if (hdr->magic != FYD_EXEC_MAGIC) return -2;
+    if (sizeof(FydExecHeader) + hdr->tamanho_codigo > tamanho_buf) return -3;
+    if (hdr->entry_offset >= hdr->tamanho_codigo) return -4;
 
     if (out_hdr) {
         fyd_memcpy(out_hdr, hdr, sizeof(FydExecHeader));
@@ -52,25 +104,19 @@ int fyd_executar_binario(const void *buffer, uint64_t tamanho_buf) {
     int err = fyd_validar_executavel(buffer, tamanho_buf, &hdr);
     if (err != 0) return err;
 
-    /* Aloca memória contígua para Código + BSS */
     uint64_t mem_necessaria = hdr.tamanho_codigo + hdr.tamanho_bss;
-    uint8_t *area_exec = (uint8_t *)kmalloc(mem_necessaria);
-    if (!area_exec) return -5;
+    if (mem_necessaria > FYD_MAX_EXEC_MEM) return -5;
 
     const uint8_t *codigo_src = ((const uint8_t *)buffer) + sizeof(FydExecHeader);
-    fyd_memcpy(area_exec, codigo_src, hdr.tamanho_codigo);
+    fyd_memcpy(fyd_exec_arena, codigo_src, hdr.tamanho_codigo);
 
     if (hdr.tamanho_bss > 0) {
-        fyd_memset(area_exec + hdr.tamanho_codigo, 0, hdr.tamanho_bss);
+        fyd_memset(fyd_exec_arena + hdr.tamanho_codigo, 0, hdr.tamanho_bss);
     }
 
-    /* Salta para o ponto de entrada 64-bit e retorna status em EAX */
     typedef int (*FydEntryFunc)(void);
-    FydEntryFunc entry = (FydEntryFunc)(area_exec + hdr.entry_offset);
-    int ret = entry();
-
-    kfree(area_exec);
-    return ret;
+    FydEntryFunc entry = (FydEntryFunc)(fyd_exec_arena + hdr.entry_offset);
+    return entry();
 }
 
 /* =========================================================================
@@ -93,8 +139,9 @@ int fyd_instalar_pacote(const void *buffer, uint64_t tamanho_buf) {
 
         if (offset + ent->tamanho > tamanho_buf) return -4;
 
-        /* Grava o arquivo extraído no sistema de arquivos /fyd */
-        fs_escrever_arquivo(ent->destino, base + offset, ent->tamanho);
+        if (fyd_registrar_arquivo_extraido(ent->destino, base + offset, ent->tamanho) != 0) {
+            return -5;
+        }
         offset += ent->tamanho;
     }
 
@@ -103,10 +150,6 @@ int fyd_instalar_pacote(const void *buffer, uint64_t tamanho_buf) {
 
 /* =========================================================================
  * 3. PARSER DE CONFIGURAÇÃO (.fcfg)
- * Formato esperado em /fyd/config/*.fcfg:
- *   #!FYDCFG v1
- *   tema=roxo_neon
- *   timezone=-3
  * ========================================================================= */
 int fyd_cfg_ler_chave(const char *conteudo_cfg, const char *chave, char *valor_out, int max_len) {
     if (!conteudo_cfg || !chave || !valor_out || max_len <= 0) return -1;
@@ -115,17 +158,14 @@ int fyd_cfg_ler_chave(const char *conteudo_cfg, const char *chave, char *valor_o
     const char *p = conteudo_cfg;
 
     while (*p) {
-        /* Ignora espaços iniciais */
         while (*p == ' ' || *p == '\t') p++;
 
-        /* Ignora comentários (#) e linhas vazias */
         if (*p == '#' || *p == '\n' || *p == '\r') {
             while (*p && *p != '\n') p++;
             if (*p == '\n') p++;
             continue;
         }
 
-        /* Verifica se a linha começa com "chave=" */
         if (fyd_strncmp(p, chave, chave_len) == 0 && p[chave_len] == '=') {
             p += chave_len + 1;
             int i = 0;
@@ -133,14 +173,13 @@ int fyd_cfg_ler_chave(const char *conteudo_cfg, const char *chave, char *valor_o
                 valor_out[i++] = *p++;
             }
             valor_out[i] = '\0';
-            return 0; /* Chave encontrada */
+            return 0;
         }
 
-        /* Avança para a próxima linha */
         while (*p && *p != '\n') p++;
         if (*p == '\n') p++;
     }
 
     valor_out[0] = '\0';
-    return -2; /* Chave não encontrada */
+    return -2;
 }
