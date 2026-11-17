@@ -85,6 +85,7 @@ OBJS = \
     memmap.o                \
     syscall_handler.o       \
     stubs_kernel.o          \
+    fyd_formatos.o          \
     estrutura.o             \
     energia.o               \
     ../pentest/pentest.o    \
