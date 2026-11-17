@@ -74,6 +74,7 @@ OBJS = \
     boot_config.o           \
     pmm.o                   \
     paging.o                \
+    apic.o					\
     heap.o                  \
     context.o               \
     scheduler.o             \
@@ -93,8 +94,7 @@ OBJS = \
     ../boot/gdt.o           \
     ../boot/idt.o           \
     ../boot/interrupts.o    \
-    ../boot/cpu.o           \
-	../boot/apic.o           \
+    ../boot/cpu.o           \	
     ../drivers/pci.o        \
     ../drivers/particao.o   \
     ../drivers/disco.o      \
