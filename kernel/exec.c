@@ -1382,6 +1382,7 @@ static int exibir_desktop_grafico(int L, int A) {
                             else if (acao == 5) { modo_janela = MODO_JANELA_SISTEMA;  janela_aberta = 1; }
                             else if (acao == 6) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
                             else if (acao == 7) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
+                            else if (acao == 8) { app_calculadora.abrir(); }
 
                             menu_aberto = 0;
                             precisa_redesenhar = 1;
