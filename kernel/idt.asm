@@ -7,7 +7,7 @@ bits 64
 default rel
 
 IDT_ENTRIES equ 256
-CODE_SEG_64 equ 0x18            ; Seletor de codigo 64-bit conforme CS=0x0018 da GDT
+CODE_SEG_64 equ 0x08            ; Seletor Kernel Code 64-bit conforme gdt.asm (indice 1 * 8)
 
 section .data
 align 8
