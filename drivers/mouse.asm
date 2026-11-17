@@ -236,7 +236,7 @@ mouse_definir_posicao:
     ret
 
 ; ==========================================
-; ⚡ PROCESSAR PACOTES PS/2 (IRQ12 ou Polling)
+; ⚡ PROCESSAR PACOTES PS/2 (1 byte por chamada - Não trava a CPU)
 ; ==========================================
 mouse_tratar_irq:
     push    rax
@@ -244,81 +244,92 @@ mouse_tratar_irq:
     push    rcx
     push    rdx
 
-.proximo_byte:
+    ; Verifica se há dados na controladora
     in      al, MOUSE_CMD_PORT
-    test    al, 0x01                ; Bit 0: buffer de saída cheio?
+    test    al, 0x01                  ; Bit 0: buffer de saída cheio?
     jz      .fim
-    test    al, 0x20                ; Bit 5: dado veio da porta auxiliar (mouse)?
+    test    al, 0x20                  ; Bit 5: dado veio da porta auxiliar (mouse)?
     jz      .fim
 
     in      al, MOUSE_DATA_PORT
     movzx   ecx, byte [mouse_ciclo]
 
-    ; Byte 0 sempre possui bit 3 = 1 (garante sincronia)
+    ; Se estamos no ciclo 0, o byte DEVE ter o bit 3 ativado (padrão PS/2)
     test    ecx, ecx
-    jnz     .guardar_byte
+    jnz     .armazenar
     test    al, 0x08
-    jz      .proximo_byte
+    jz      .fim                      ; Se inválido, aguarda próximo ciclo limpo
 
-.guardar_byte:
+.armazenar:
     lea     rdx, [mouse_pacote]
     mov     [rdx + rcx], al
     inc     ecx
     cmp     ecx, 3
-    jl      .atualizar_ciclo
+    jl      .salvar_ciclo
 
-    ; Pacote de 3 bytes completo!
+    ; --- PACOTE COMPLETO DE 3 BYTES ---
     mov     byte [mouse_ciclo], 0
     movzx   ebx, byte [mouse_pacote]
 
-    ; Atualiza máscara de botões (bits 0..2)
+    ; Atualiza botões (bits 0..2)
     mov     eax, ebx
     and     eax, 0b00000111
     mov     [mouse_botoes], eax
 
-    ; Descarta pacote se houver overflow X ou Y
+    ; Descarta se houver overflow X ou Y
     test    bl, 0xC0
-    jnz     .proximo_byte
+    jnz     .fim
 
-    ; Delta X com extensão de sinal (bit 4 do Byte 0)
+    ; Delta X com extensão de sinal
     movzx   eax, byte [mouse_pacote + 1]
     test    bl, 0x10
     jz      .dx_ok
     or      eax, 0xFFFFFF00
 .dx_ok:
-    add     [mouse_x], eax
-    cmp     dword [mouse_x], 0
-    jge     .x_max
-    mov     dword [mouse_x], 0
-.x_max:
-    mov     edx, [fb_largura]
-    dec     edx
-    cmp     [mouse_x], edx
-    jle     .calc_y
-    mov     [mouse_x], edx
+    add     dword [mouse_x], eax
 
-.calc_y:
-    ; Delta Y com extensão de sinal (bit 5 do Byte 0, eixo invertido)
+    ; Limites de X (Tela VESA)
+    cmp     dword [mouse_x], 0
+    jge     .x_baixo
+    mov     dword [mouse_x], 0
+.x_baixo:
+    mov     edx, [fb_largura]
+    test    edx, edx
+    jnz     .larg_valida
+    mov     edx, 800                  ; Fallback padrão
+.larg_valida:
+    dec     edx
+    cmp     dword [mouse_x], edx
+    jle     .processar_y
+    mov     dword [mouse_x], edx
+
+.processar_y:
+    ; Delta Y com extensão de sinal (eixo invertido)
     movzx   eax, byte [mouse_pacote + 2]
     test    bl, 0x20
     jz      .dy_ok
     or      eax, 0xFFFFFF00
 .dy_ok:
-    sub     [mouse_y], eax
-    cmp     dword [mouse_y], 0
-    jge     .y_max
-    mov     dword [mouse_y], 0
-.y_max:
-    mov     edx, [fb_altura]
-    dec     edx
-    cmp     [mouse_y], edx
-    jle     .proximo_byte
-    mov     [mouse_y], edx
-    jmp     .proximo_byte
+    sub     dword [mouse_y], eax
 
-.atualizar_ciclo:
+    ; Limites de Y (Tela VESA)
+    cmp     dword [mouse_y], 0
+    jge     .y_baixo
+    mov     dword [mouse_y], 0
+.y_baixo:
+    mov     edx, [fb_altura]
+    test    edx, edx
+    jnz     .alt_valida
+    mov     edx, 600                  ; Fallback padrão
+.alt_valida:
+    dec     edx
+    cmp     dword [mouse_y], edx
+    jle     .fim
+    mov     dword [mouse_y], edx
+    jmp     .fim
+
+.salvar_ciclo:
     mov     [mouse_ciclo], cl
-    jmp     .proximo_byte
 
 .fim:
     pop     rdx
