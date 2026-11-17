@@ -1,6 +1,6 @@
 ; ==========================================
-; FB_SERVER.ASM — COMPOSITOR NO KERNEL
-; Gerenciador de Janelas · Cursor sem Rastro
+; FB_SERVER.ASM — COMPOSITOR NO KERNEL (CORRIGIDO)
+; Gerenciador de Janelas · Cursor sem Rastro · Clamping Seguro
 ; FydelisTech OS v4.2 · Salvador • Bahia
 ; ==========================================
 BITS 64
@@ -107,6 +107,16 @@ ws_criar_janela:
     jmp     .procurar
 
 .encontrada:
+    ; Clampa X e Y iniciais para nunca serem negativos
+    test    edi, edi
+    jns     .x_init_ok
+    xor     edi, edi
+.x_init_ok:
+    test    esi, esi
+    jns     .y_init_ok
+    xor     esi, esi
+.y_init_ok:
+
     mov     [r12 + Janela.x], edi
     mov     [r12 + Janela.y], esi
     mov     [r12 + Janela.largura], edx
@@ -156,11 +166,17 @@ ws_desenhar_janelas:
     mov     ecx, [r12 + Janela.altura]
     add     ecx, r14d                   ; y2
 
-    ; 1. Borda externa roxo neon (2px)
+    ; 1. Borda externa roxo neon (2px) com clamping >= 0
     mov     edi, r13d
     sub     edi, 2
+    jns     .borda_x_ok
+    xor     edi, edi
+.borda_x_ok:
     mov     esi, r14d
     sub     esi, 2
+    jns     .borda_y_ok
+    xor     esi, esi
+.borda_y_ok:
     mov     edx, r15d
     add     edx, 2
     add     ecx, 2
@@ -191,6 +207,9 @@ ws_desenhar_janelas:
     jmp     .loop
 
 .fim:
+    ; Redesenha o cursor por cima das janelas atualizadas (salva o novo fundo)
+    call    cursor_desenhar_novo
+
     pop     r15
     pop     r14
     pop     r13
@@ -213,6 +232,11 @@ cursor_restaurar_fundo:
 
     mov     r12d, [cursor_ant_x]
     mov     r13d, [cursor_ant_y]
+    test    r12d, r12d
+    js      .fim_rest
+    test    r13d, r13d
+    js      .fim_rest
+
     mov     r14d, [fb_pitch]
     lea     r15, [cursor_buffer]
 
@@ -269,6 +293,14 @@ cursor_desenhar_novo:
 
     mov     r12d, [cursor_x]
     mov     r13d, [cursor_y]
+    test    r12d, r12d
+    jns     .cx_ok
+    xor     r12d, r12d
+.cx_ok:
+    test    r13d, r13d
+    jns     .cy_ok
+    xor     r13d, r13d
+.cy_ok:
     mov     [cursor_ant_x], r12d
     mov     [cursor_ant_y], r13d
 
@@ -336,6 +368,31 @@ cursor_desenhar_novo:
 ws_atualizar_cursor:
     call    mouse_ler_posicao
     ; EDI = X, ESI = Y, EAX = botões
+
+    ; Clampa X entre 0 e fb_largura - 1
+    test    edi, edi
+    jns     .x_min_ok
+    xor     edi, edi
+.x_min_ok:
+    mov     edx, [fb_largura]
+    dec     edx
+    cmp     edi, edx
+    jle     .x_max_ok
+    mov     edi, edx
+.x_max_ok:
+
+    ; Clampa Y entre 0 e fb_altura - 1
+    test    esi, esi
+    jns     .y_min_ok
+    xor     esi, esi
+.y_min_ok:
+    mov     edx, [fb_altura]
+    dec     edx
+    cmp     esi, edx
+    jle     .y_max_ok
+    mov     esi, edx
+.y_max_ok:
+
     cmp     byte [cursor_salvo], 0
     je      .mover
     cmp     edi, [cursor_x]
