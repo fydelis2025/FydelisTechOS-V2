@@ -5,6 +5,7 @@
  * ============================================================================ */
 #include "../apps/apps.h"
 #include "../include/fyd_formatos.h"
+#include "../include/fydlog.h"
 #include "gpu.h"
 #include "icones.h"
 #include "fontes_ui.h"
@@ -1071,6 +1072,11 @@ static int exibir_desktop_grafico(int L, int A) {
     char res_buf[48];
     char tmp[16];
 
+    //Funções do FydLog
+    fydlog_escrever(LOG_INFO, "Desktop grafico iniciado");
+    if (!disco_detectado) fydlog_escrever(LOG_AVISO, "Disco ATA primario nao respondeu");
+    if (!rede_ler_status_link()) fydlog_escrever(LOG_AVISO, "Link Ethernet E1000 desconectado");
+    
     /* Inicializa hardware PCI antes de ler o status para o Systray */
     audio_init();
     if (bt_detectar_placa() != 0) {
