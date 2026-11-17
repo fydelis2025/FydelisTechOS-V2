@@ -2,10 +2,10 @@
 # FYDELIS TECH OS — FydelTerm Kernel Makefile
 # v2.4: integracao com tools/ e assets graficos
 # Padrao de inclusao: src/include/syscalls
-# De Salvador • Bahia 🇧🇷
+# De Salvador • Bahia
 # ==========================================
 
-# ⚙️ FERRAMENTAS
+# FERRAMENTAS
 ASM       = nasm
 ASFLAGS   = -f elf64 \
             -I ../include/ \
@@ -57,7 +57,7 @@ INC_DIR   = ../include
 BUILD_DIR ?= build
 
 # ==========================================
-# 🎨 ASSETS GRAFICOS GERADOS VIA tools/
+# ASSETS GRAFICOS GERADOS VIA tools/
 # ==========================================
 HEADERS_ASSETS = \
     $(INC_DIR)/icones.h \
@@ -65,92 +65,91 @@ HEADERS_ASSETS = \
     $(INC_DIR)/wallpaper.h
 
 # ==========================================
-# 📦 ARQUIVOS OBJETO — ORDEM DE CARGA VITAL!
-# kernel.o SEMPRE primeiro → ponto de entrada em 0x8000
+# ARQUIVOS OBJETO — ORDEM DE CARGA VITAL!
+# kernel.o SEMPRE primeiro -> ponto de entrada em 0x8000
 # ==========================================
 OBJS = \
-    kernel.o                \
-    exec.o                  \
-    boot_config.o           \
-    pmm.o                   \
-    paging.o                \
-    apic.o					\
-    idt.o					\
-    heap.o                  \
-    context.o               \
-    scheduler.o             \
-    exceptions.o            \
-    fs.o                    \
-    buffer.o                \
-    editor.o                \
-    commands.o              \
-    memmap.o                \
-    syscall_handler.o       \
-    stubs_kernel.o          \
-    fyd_formatos.o          \
-    panic.o                 \
-    estrutura.o             \
-    energia.o               \
-    ../pentest/pentest.o    \
-    ../boot/gdt.o           \    
-    ../boot/interrupts.o    \
-    ../boot/cpu.o           \	
-    ../drivers/pci.o        \
-    ../drivers/particao.o   \
-    ../drivers/disco.o      \
-    ../drivers/timer.o      \
-    ../drivers/apic.o       \
-    ../drivers/ata.o        \
-    ../drivers/keyboard.o   \
-    ../drivers/audio.o      \
-    ../drivers/video.o      \
-    ../drivers/rede.o       \
-    ../drivers/rede_bridge.o\
-    ../drivers/wifi.o       \
-    ../drivers/bluetooth.o  \
-    ../drivers/cpu.o        \
+    kernel.o \
+    exec.o \
+    boot_config.o \
+    pmm.o \
+    paging.o \
+    apic.o \
+    idt.o \
+    heap.o \
+    context.o \
+    scheduler.o \
+    exceptions.o \
+    fs.o \
+    buffer.o \
+    editor.o \
+    commands.o \
+    memmap.o \
+    syscall_handler.o \
+    stubs_kernel.o \
+    fyd_formatos.o \
+    panic.o \
+    estrutura.o \
+    energia.o \
+    ../pentest/pentest.o \
+    ../boot/gdt.o \
+    ../boot/interrupts.o \
+    ../boot/cpu.o \
+    ../drivers/pci.o \
+    ../drivers/particao.o \
+    ../drivers/disco.o \
+    ../drivers/timer.o \
+    ../drivers/ata.o \
+    ../drivers/keyboard.o \
+    ../drivers/audio.o \
+    ../drivers/video.o \
+    ../drivers/rede.o \
+    ../drivers/rede_bridge.o \
+    ../drivers/wifi.o \
+    ../drivers/bluetooth.o \
+    ../drivers/cpu.o \
     ../drivers/impressora.o \
     ../drivers/dhcp_servidor.o \
-    ../drivers/usb.o        \
-    ../drivers/mouse.o      \
-    ../drivers/texto.o      \
+    ../drivers/usb.o \
+    ../drivers/mouse.o \
+    ../drivers/texto.o \
     ../virtual/virt_detect.o \
     ../virtual/plataforma_detect.o \
-    ../virtual/vmx_init.o   \
-    ../virtual/svm_init.o   \
-    ../virtual/vm_core.o    \
+    ../virtual/vmx_init.o \
+    ../virtual/svm_init.o \
+    ../virtual/vm_core.o \
     ../virtual/vmexit_handler.o \
     ../virtual/svm_exit_handler.o \
     ../virtual/vm_execucao_loop.o \
-    ../virtual/ept_npt.o    \
+    ../virtual/ept_npt.o \
     ../virtual/ept_integracao.o \
     ../virtual/vm_integracao.o \
     ../virtual/vm_disco_interface.o \
     ../virtual/convidado_com_disco.o \
-    ../virtual/memvirt.o    \
-    ../user/entry.o         \
-    ../user/syscall_stub.o  \
-    ../user/vm_client.o     \
-    ../user/fs_client.o     \
-    ../user/net_client.o    \
+    ../virtual/memvirt.o \
+    ../user/entry.o \
+    ../user/syscall_stub.o \
+    ../user/vm_client.o \
+    ../user/fs_client.o \
+    ../user/net_client.o \
     ../user/security_client.o \
-    ../user/terminal.o      \
-    ../user/init.o          \
-    ../grafico/amd_gpu.o    \
-    ../grafico/fb_server.o  \
+    ../user/terminal.o \
+    ../user/init.o \
+    ../grafico/amd_gpu.o \
+    ../grafico/fb_server.o \
     ../grafico/fb_generico.o \
-    ../grafico/gop.o        \
+    ../grafico/gop.o \
     ../grafico/gpu_dispatch.o \
-    ../grafico/intel_gpu.o  \
-    ../grafico/pci_gpu.o    \
-    ../grafico/vesafb.o     \
+    ../grafico/intel_gpu.o \
+    ../grafico/pci_gpu.o \
+    ../grafico/vesafb.o \
     ../grafico/virtio_gpu.o \
-    ../system/hosts_mgr.o   \
+    ../system/hosts_mgr.o \
     ../system/compat_stubs.o \
-    ../system/fydlog.o      \
-    ../idioma/en_us.o       \
-    ../idioma/idioma.o      \
-    ../idioma/pt_br.o       \
+    ../system/fydlog.o \
+    ../idioma/en_us.o \
+    ../idioma/idioma.o \
+    ../idioma/pt_br.o \
     ../apps/acessorios/calculadora.o \
     ../apps/sistema/visualizador_logs.o
 
@@ -158,10 +157,10 @@ OBJS = \
 -include $(OBJS:.o=.d)
 
 # ==========================================
-# 🎯 ALVO PRINCIPAL
+# ALVO PRINCIPAL
 # ==========================================
 all: assets fydelterm.img iso $(BUILD_DIR)/fyd_boot.cfg
-	@echo "Build do kernel, ISO e configuração concluído com sucesso!"
+	@echo "Build do kernel, ISO e configuracao concluido com sucesso!"
 
 $(BUILD_DIR)/fyd_boot.cfg: ../boot/fyd_boot.cfg
 	@mkdir -p $(BUILD_DIR)
@@ -169,17 +168,18 @@ $(BUILD_DIR)/fyd_boot.cfg: ../boot/fyd_boot.cfg
 	@echo "[+] Copiado fyd_boot.cfg para $(BUILD_DIR)"
 
 # ==========================================
-# 🐍 Aplicativos (apps/)
+# Aplicativos (apps/)
 # ==========================================
 ../apps/acessorios/calculadora.o: ../apps/acessorios/calculadora.c ../apps/apps.h
+	@echo "  CC       $<"
 	$(CC) $(CFLAGS) -c $< -o $@
 
-visualizador_logs.o: ../apps/sistema/visualizador_logs.c
-	@echo "  CC       visualizador_logs.c"
+../apps/sistema/visualizador_logs.o: ../apps/sistema/visualizador_logs.c ../apps/apps.h
+	@echo "  CC       $<"
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ==========================================
-# 🐍 PIPELINE PYTHON (tools/ -> src/include/)
+# PIPELINE PYTHON (tools/ -> src/include/)
 # ==========================================
 $(ASSETS_DIR)/icones/ethernet.svg: $(TOOLS_DIR)/gerar_kit_icones.py
 	@echo "  PY       Gerando kit base de icones SVG"
@@ -200,7 +200,7 @@ $(INC_DIR)/wallpaper.h: $(wildcard $(ASSETS_DIR)/wallpapers/*) $(TOOLS_DIR)/img2
 assets: $(HEADERS_ASSETS)
 
 # ==========================================
-# 🔧 REGRAS DE COMPILAÇÃO
+# REGRAS DE COMPILACAO
 # ==========================================
 exec.o: exec.c $(HEADERS_ASSETS)
 	@echo "  CC       $< (com assets graficos)"
@@ -215,7 +215,7 @@ exec.o: exec.c $(HEADERS_ASSETS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ==========================================
-# 🥾 BOOTLOADER E EFI STUB
+# BOOTLOADER E EFI STUB
 # ==========================================
 boot.bin: ../boot/bootloader.asm
 	@echo "  AS       Bootloader"
@@ -232,14 +232,14 @@ BOOTX64.EFI: ../boot/efi_stub.asm
 	$(ASM) -f bin -I ../include/ $< -o $@
 
 # ==========================================
-# 🔗 LINK DO KERNEL
+# LINK DO KERNEL
 # ==========================================
 kernel.bin: $(OBJS)
-	@echo "  LD       Kernel — $(words $(OBJS)) módulos"
+	@echo "  LD       Kernel — $(words $(OBJS)) modulos"
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
 # ==========================================
-# 💿 IMAGEM DE DISCO
+# IMAGEM DE DISCO
 # LBA 4096 (offset 2 MiB) + setores do kernel
 # ==========================================
 fydelterm.img: boot.bin kernel.bin
@@ -249,7 +249,7 @@ fydelterm.img: boot.bin kernel.bin
 	dd if=kernel.bin of=$@ conv=notrunc bs=512 seek=4096 status=none
 
 # ==========================================
-# 🌐 ISO
+# ISO
 # ==========================================
 boot_flp.img: boot.bin
 	@echo "  FLP      $@"
@@ -268,13 +268,13 @@ iso: fydelterm.img boot_flp.img
 		-V "FYDELIS_TECH_OS" \
 		iso_root/
 	rm -rf iso_root
-	@echo "✅ ISO pronta: fydelterm.iso"
+	@echo "ISO pronta: fydelterm.iso"
 
 # ==========================================
-# ▶️ EXECUTAR
+# EXECUTAR
 # ==========================================
 run: fydelterm.img
-	@echo "🚀 Iniciando FydelisTech OS..."
+	@echo "Iniciando FydelisTech OS..."
 	qemu-system-x86_64 \
 		-drive format=raw,file=fydelterm.img \
 		-boot c \
@@ -295,7 +295,7 @@ debug: fydelterm.img
 		-s -S
 
 # ==========================================
-# 🧹 LIMPAR
+# LIMPAR
 # ==========================================
 clean:
 	@echo "Limpando..."
@@ -309,6 +309,7 @@ clean:
 	rm -f ../system/*.o ../system/*.d
 	rm -f ../idioma/*.o ../idioma/*.d
 	rm -f ../apps/acessorios/*.o ../apps/acessorios/*.d
+	rm -f ../apps/sistema/*.o ../apps/sistema/*.d
 	rm -f *.bin *.EFI fydelterm.img boot_flp.img fydelterm.iso
 	@echo "Limpo!"
 
