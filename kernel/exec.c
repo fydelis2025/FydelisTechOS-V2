@@ -3,6 +3,7 @@
  * Arquitetura: x86_64 Freestanding | VESA Linear Framebuffer 32-bit + PS/2
  * Integrado com: icones.h, fontes_ui.h, estrutura.asm, energia.asm e Systray
  * ============================================================================ */
+#include "../apps/apps.h"
 
 #include "gpu.h"
 #include "icones.h"
@@ -920,6 +921,19 @@ static void exibir_tela_login(int L, int A) {
     }
 }
 
+/* Pontes gráficas públicas usadas pelos aplicativos em apps/ */
+void gui_retangulo(int x, int y, int w, int h, uint32_t cor) {
+    desenhar_retangulo_solido(x, y, w, h, cor);
+}
+
+void gui_borda(int x, int y, int w, int h, uint32_t cor) {
+    desenhar_caixa_com_borda(x, y, w, h, 1, cor, 0x00000000);
+}
+
+void gui_texto(int x, int y, const char *str, uint32_t cor) {
+    gpu_escrever_texto(str, x, y, cor);
+}
+
 /* ============================================================================
  * MENU INICIAR ORGANIZADO POR CATEGORIA (APLICATIVOS | SISTEMA & CONFIG)
  * ============================================================================ */
@@ -1003,6 +1017,7 @@ static void desenhar_menu_iniciar_categorizado(int menu_x, int menu_y, int menu_
     gpu_desenhar_icone(icone_desligar, bx3 + 6, btn_y + 4, ICONE_TAM, ICONE_TAM);
     gpu_escrever_texto("Desligar", bx3 + 30, btn_y + 6, COR_VERMELHO_ALERTA);
 }
+
 
 /* ============================================================================
  * TELA 3: ÁREA DE TRABALHO GRÁFICA (Botão F + Menu + Janelas + Widgets + Systray)
@@ -1249,6 +1264,11 @@ static int exibir_desktop_grafico(int L, int A) {
                 }
             }
 
+            /* 4.1 Janelas de Aplicativos Nativos (apps/) */
+            if (app_calculadora.aberta) {
+                app_calculadora.desenhar();
+            }
+
             /* 5. Barra de Tarefas Inferior */
             desenhar_retangulo_solido(0, taskbar_y, L, taskbar_h, COR_PAINEL);
             desenhar_retangulo_solido(0, taskbar_y, L, 2, COR_CIANO_NEON);
@@ -1467,3 +1487,4 @@ int kernel_exec_bin(void) {
 
     return 0;
 }
+
