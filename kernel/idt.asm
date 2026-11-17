@@ -1,6 +1,6 @@
 ; ============================================================================
 ; IDT.ASM — Tabela Completa de 32 Excecoes + IRQ0 (Timer) + IRQ1 (Teclado) + IRQ12 (Mouse)
-; FydelisTech OS v4.2 — Conectado ao Kernel Panic & FydLog
+; FydelisTech OS v4.2 — Conectado ao APIC, Kernel Panic & FydLog
 ; Salvador - Bahia
 ; ============================================================================
 bits 64
@@ -22,27 +22,37 @@ idt_table:
 section .text
 global idt_init
 extern kernel_panic_handler     ; Handler visual e de log em kernel/panic.c
-extern keyboard_handler         ; Tratador de interrupcao do teclado (IRQ1 - Vetor 33)
+extern apic_eoi                 ; EOI do Local APIC em kernel/apic.asm
 
-; Stub local para saltar para o handler do teclado (Vetor 33)
-keyboard_stub:
-    jmp keyboard_handler
-
-; Stub de Timer (IRQ0 - Vetor 32): acorda o HLT e envia EOI ao PIC Master
+; Stub de Timer (IRQ0 / GSI 2 - Vetor 32): acorda o HLT e envia EOI ao APIC
 irq0_timer_stub:
     push rax
-    mov al, 0x20
-    out 0x20, al
+    push r8
+    call apic_eoi
+    pop r8
     pop rax
     iretq
 
-; Stub de Mouse PS/2 (IRQ12 - Vetor 44): acorda o HLT e envia EOI ao PIC Slave + Master
+; Stub de Teclado PS/2 (IRQ1 - Vetor 33): acorda o HLT sem consumir porta 0x60
+keyboard_stub:
+    push rax
+    push r8
+    call apic_eoi
+    pop r8
+    pop rax
+    iretq
+
+; Stub de Mouse PS/2 (IRQ12 - Vetor 44): acorda o HLT e envia EOI ao APIC
 irq12_mouse_stub:
     push rax
-    mov al, 0x20
-    out 0xA0, al                ; EOI PIC Slave (IRQ 8..15)
-    out 0x20, al                ; EOI PIC Master
+    push r8
+    call apic_eoi
+    pop r8
     pop rax
+    iretq
+
+; Stub para interrupcao espuria do APIC (Vetor 0xFF - NAO envia EOI)
+irq_espuria_stub:
     iretq
 
 ; ============================================================================
@@ -159,6 +169,9 @@ idt_init:
     cmp rcx, 44
     je .carrega_mouse
 
+    cmp rcx, 255
+    je .carrega_espuria
+
     xor rdx, rdx
     jmp .escreve_entrada
 
@@ -177,6 +190,10 @@ idt_init:
 
 .carrega_mouse:
     lea rdx, [rel irq12_mouse_stub]
+    jmp .escreve_entrada
+
+.carrega_espuria:
+    lea rdx, [rel irq_espuria_stub]
     jmp .escreve_entrada
 
 .escreve_entrada:
