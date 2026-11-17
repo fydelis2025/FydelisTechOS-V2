@@ -1421,6 +1421,34 @@ static int exibir_desktop_grafico(int L, int A) {
                     }
                 }
             }
+
+            /* 2.5 Cliques na janela da Calculadora (prioridade por estar em primeiro plano) */
+            else if (app_calculadora.aberta &&
+                     ponto_no_retangulo(mx, my, app_calculadora.x, app_calculadora.y,
+                                        app_calculadora.w, app_calculadora.h)) {
+                int rel_x = mx - app_calculadora.x;
+                int rel_y = my - app_calculadora.y;
+
+                /* Botão fechar [X] no canto superior direito */
+                if (rel_x >= app_calculadora.w - 24 && rel_x <= app_calculadora.w - 4 &&
+                    rel_y >= 3 && rel_y <= 23) {
+                    app_calculadora.aberta = 0;
+                    arrastando_calc = 0;
+                }
+                /* Barra de título (altura 26px) -> inicia arraste */
+                else if (rel_y >= 0 && rel_y <= 26) {
+                    arrastando_calc = 1;
+                    calc_drag_off_x = rel_x;
+                    calc_drag_off_y = rel_y;
+                }
+                /* Demais áreas -> repassa clique para os botões da Calculadora */
+                else {
+                    app_calculadora.on_click(rel_x, rel_y);
+                }
+
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
+            }
             /* 3. Aba da janela na Barra de Tarefas */
             else if (ponto_no_retangulo(mx, my, btn_f_x + btn_f_w + 10, btn_f_y + 1, 195, 30)) {
                 janela_aberta = !janela_aberta;
