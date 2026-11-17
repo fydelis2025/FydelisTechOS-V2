@@ -147,7 +147,8 @@ OBJS = \
     ../system/fydlog.o      \
     ../idioma/en_us.o       \
     ../idioma/idioma.o      \
-    ../idioma/pt_br.o
+    ../idioma/pt_br.o       \
+    ../apps/acessorios/calculadora.o
 
 # Dependencias de header geradas pelo GCC (-MMD)
 -include $(OBJS:.o=.d)
@@ -162,6 +163,12 @@ $(BUILD_DIR)/fyd_boot.cfg: ../boot/fyd_boot.cfg
 	@mkdir -p $(BUILD_DIR)
 	cp ../boot/fyd_boot.cfg $@
 	@echo "[+] Copiado fyd_boot.cfg para $(BUILD_DIR)"
+
+# ==========================================
+# 🐍 Aplicativos (apps/)
+# ==========================================
+../apps/acessorios/calculadora.o: ../apps/acessorios/calculadora.c ../apps/apps.h
+	$(CC) $(CFLAGS) -c $< -o $@
 
 # ==========================================
 # 🐍 PIPELINE PYTHON (tools/ -> src/include/)
@@ -294,6 +301,7 @@ clean:
 	rm -f ../system/*.o ../system/*.d
 	rm -f ../idioma/*.o ../idioma/*.d
 	rm -f ../core/security/*.o ../core/security/*.d
+    rm -f ../apps/*.o ../apps/*.d ../apps/*/*.o ../apps/*/*.d
 	rm -f *.bin *.EFI fydelterm.img boot_flp.img fydelterm.iso
 	@echo "✅ Limpo!"
 
