@@ -38,7 +38,7 @@ extern hosts_inicializar
 extern fydlog_inicializar
 
 ;extern pci_init
-extern usb_scan_controllers
+global usb_scan_controllers
 
 global bytes_para_gb
 global _entry16
