@@ -1,5 +1,5 @@
 ; ==========================================
-; 🖥️ VESAFB.ASM — COMPLETO E FUNCIONAL
+; VESAFB.ASM — CORRIGIDO E OTIMIZADO
 ; FydelisTech OS v4.2 · Salvador • Bahia 🇧🇷
 ; ==========================================
 BITS 64
@@ -48,7 +48,7 @@ global fb_desenhar_pixel
 global fb_preencher_tela
 
 ; ==========================================
-; ✅ INICIALIZAÇÃO — chamar APÓS preencher fb_base e resolução
+; INICIALIZAÇÃO — chamar APÓS preencher fb_base e resolução
 ; ==========================================
 fb_inicializar:
     cmp     qword [rel fb_base], 0
@@ -83,7 +83,7 @@ fb_inicializar:
     ret
 
 ; ==========================================
-; 🧹 LIMPAR TELA com cor sólida
+; LIMPAR TELA com cor sólida
 ; Entrada: rdi = cor (0xAARRGGBB)
 ; ==========================================
 fb_limpar:
@@ -112,13 +112,20 @@ fb_limpar:
     ret
 
 ; ==========================================
-; 🎨 DESENHAR PIXEL — x, y, cor
+; DESENHAR PIXEL — x, y, cor
 ; rdi = x, rsi = y, rdx = cor (0xAARRGGBB)
 ; ==========================================
 fb_desenhar_pixel:
+    ; Valida se X < 0 ou X >= largura
+    test    rdi, rdi
+    js      .fora
     mov     eax, [rel fb_largura]
     cmp     rdi, rax
     jge     .fora
+
+    ; Valida se Y < 0 ou Y >= altura
+    test    rsi, rsi
+    js      .fora
     mov     eax, [rel fb_altura]
     cmp     rsi, rax
     jge     .fora
@@ -142,33 +149,36 @@ fb_desenhar_pixel:
     ret
 
 ; ==========================================
-; 🖥️ PREENCHER TELA
+; PREENCHER TELA (Corrigido com Pitch)
 ; Entrada: rdi = cor (0xAARRGGBB)
 ; ==========================================
 fb_preencher_tela:
     cmp     qword [rel fb_base], 0
     je      .fim
 
-    mov     eax, edi                  ; Carrega a cor 32-bit em EAX para stosd
-    mov     r10d, [rel fb_altura]     ; Leitura 32-bit (evita ler fb_pitch junto)
-    mov     r11d, [rel fb_largura]    ; Leitura 32-bit (evita ler fb_altura junto)
-    mov     r8d, [rel fb_pitch]       ; Leitura 32-bit (evita ler fb_bpp junto)
-    mov     r9, [rel fb_base]
+    push    rbx
+    mov     rbx, [rel fb_base]
+    mov     eax, edi                  ; Cor 32-bit para stosd
+    mov     r8d, [rel fb_pitch]       ; Bytes por linha
+    mov     edx, [rel fb_altura]      ; Altura em linhas
+    mov     r9, r8
+    shr     r9, 2                     ; Quantidade de dwords por linha (respeitando pitch)
 
-.linha:
-    mov     rcx, r11                  ; Largura completa em pixels
-    mov     rdi, r9
+.linha_preencher:
+    mov     rcx, r9
+    mov     rdi, rbx
     rep     stosd
 
-    add     r9, r8
-    dec     r10d
-    jnz     .linha
+    add     rbx, r8
+    dec     edx
+    jnz     .linha_preencher
 
+    pop     rbx
 .fim:
     ret
 
 ; ==========================================
-; 📐 RECALCULAR COLUNAS × LINHAS
+; RECALCULAR COLUNAS × LINHAS
 ; ==========================================
 fb_recalcular_geometria:
     mov     eax, [rel fb_largura]
@@ -188,7 +198,7 @@ fb_recalcular_geometria:
     ret
 
 ; ==========================================
-; ♻️ REDIMENSIONAR
+; REDIMENSIONAR
 ; ==========================================
 fb_redimensionar:
     cmp     edi, 640
@@ -218,7 +228,7 @@ fb_redimensionar:
     ret
 
 ; ==========================================
-; 🔤 AJUSTAR FONTE
+; AJUSTAR FONTE
 ; ==========================================
 fb_ajustar_fonte:
     mov     eax, [rel fb_largura]
@@ -262,7 +272,7 @@ fb_ajustar_fonte:
     ret
 
 ; ==========================================
-; 📤 RETORNAR GEOMETRIA PARA C
+; RETORNAR GEOMETRIA PARA C
 ; ==========================================
 fb_get_geometria:
     mov     eax, [rel colunas]
@@ -276,7 +286,7 @@ fb_get_geometria:
     ret
 
 ; ==========================================
-; 🔄 ALIASES DE COMPATIBILIDADE GLOBAL
+; ALIASES DE COMPATIBILIDADE GLOBAL
 ; ==========================================
 global gpu_preencher_tela
 gpu_preencher_tela:
