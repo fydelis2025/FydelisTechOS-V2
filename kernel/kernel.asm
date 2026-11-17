@@ -1,11 +1,13 @@
 ; ======================================
 ; Kernel FydelisTech OS - v4.2 COMPLETO (CORRIGIDO)
-; Transicao 16/32/64-bit + VESA + Deteccao Real
+; Transicao 16/32/64-bit + VESA + GDT/IDT + Deteccao Real
 ; Salvador - Bahia
 ; ======================================
 DEFAULT REL
 %include "fydelterm.inc"
 
+extern gdt_init
+extern idt_init
 extern kernel_exec_bin
 extern construir_estrutura_sistema
 extern pmm_inicializar
@@ -38,8 +40,6 @@ extern fydlog_inicializar
 
 ;extern pci_init
 ;extern usb_scan_controllers
-
-extern idt_init
 
 global bytes_para_gb
 global _entry16
@@ -231,6 +231,7 @@ start:
     mov     ss, ax
     mov     rsp, 0x90000
 
+    ; 0. Instala GDT definitiva (CS=0x08, TSS=0x28) e IDT 64-bit (seletor 0x08)
     call    gdt_init
     call    idt_init
 
