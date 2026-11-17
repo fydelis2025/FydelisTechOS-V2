@@ -1,4 +1,5 @@
 #include "../include/fyd_formatos.h"
+#include "../include/fydlog.h"
 
 /* =========================================================================
  * ARENA DE EXECUÇÃO E REGISTRO DE ARQUIVOS INSTALADOS (Autônomo no Kernel)
@@ -56,7 +57,10 @@ static void fyd_strcpy_lim(char *dst, const char *src, int max_len) {
 
 /* Grava um arquivo extraído de .fpkg na tabela interna do kernel */
 static int fyd_registrar_arquivo_extraido(const char *caminho, const void *dados, uint32_t tamanho) {
-    if (fyd_storage_usado + tamanho > FYD_MAX_PKG_STORAGE) return -1;
+    if (fyd_storage_usado + tamanho > FYD_MAX_PKG_STORAGE) {
+        fydlog_escrever(LOG_ERRO, "fpkg: storage interno de 256KB lotado");
+        return -1;
+    }
 
     int slot = -1;
     for (int i = 0; i < FYD_MAX_PKG_ARQS; i++) {
@@ -70,7 +74,10 @@ static int fyd_registrar_arquivo_extraido(const char *caminho, const void *dados
         }
     }
 
-    if (slot == -1) return -2;
+    if (slot == -1) {
+        fydlog_escrever(LOG_ERRO, "fpkg: limite maximo de 32 arquivos atingido");
+        return -2;
+    }
 
     fyd_strcpy_lim(fyd_tabela_arqs[slot].caminho, caminho, 64);
     fyd_tabela_arqs[slot].tamanho      = tamanho;
@@ -86,12 +93,24 @@ static int fyd_registrar_arquivo_extraido(const char *caminho, const void *dados
  * 1. CARREGADOR DE EXECUTÁVEIS (.fyd)
  * ========================================================================= */
 int fyd_validar_executavel(const void *buffer, uint64_t tamanho_buf, FydExecHeader *out_hdr) {
-    if (!buffer || tamanho_buf < sizeof(FydExecHeader)) return -1;
+    if (!buffer || tamanho_buf < sizeof(FydExecHeader)) {
+        fydlog_escrever(LOG_ERRO, "fyd: buffer nulo ou menor que FydExecHeader");
+        return -1;
+    }
 
     const FydExecHeader *hdr = (const FydExecHeader *)buffer;
-    if (hdr->magic != FYD_EXEC_MAGIC) return -2;
-    if (sizeof(FydExecHeader) + hdr->tamanho_codigo > tamanho_buf) return -3;
-    if (hdr->entry_offset >= hdr->tamanho_codigo) return -4;
+    if (hdr->magic != FYD_EXEC_MAGIC) {
+        fydlog_escrever(LOG_ERRO, "fyd: assinatura magica invalida (esperado FYD1)");
+        return -2;
+    }
+    if (sizeof(FydExecHeader) + hdr->tamanho_codigo > tamanho_buf) {
+        fydlog_escrever(LOG_ERRO, "fyd: arquivo executavel truncado ou corrompido");
+        return -3;
+    }
+    if (hdr->entry_offset >= hdr->tamanho_codigo) {
+        fydlog_escrever(LOG_ERRO, "fyd: entry_offset fora da secao de codigo");
+        return -4;
+    }
 
     if (out_hdr) {
         fyd_memcpy(out_hdr, hdr, sizeof(FydExecHeader));
@@ -105,7 +124,10 @@ int fyd_executar_binario(const void *buffer, uint64_t tamanho_buf) {
     if (err != 0) return err;
 
     uint64_t mem_necessaria = hdr.tamanho_codigo + hdr.tamanho_bss;
-    if (mem_necessaria > FYD_MAX_EXEC_MEM) return -5;
+    if (mem_necessaria > FYD_MAX_EXEC_MEM) {
+        fydlog_escrever(LOG_ERRO, "fyd: binario excede arena de execucao de 512KB");
+        return -5;
+    }
 
     const uint8_t *codigo_src = ((const uint8_t *)buffer) + sizeof(FydExecHeader);
     fyd_memcpy(fyd_exec_arena, codigo_src, hdr.tamanho_codigo);
@@ -113,6 +135,8 @@ int fyd_executar_binario(const void *buffer, uint64_t tamanho_buf) {
     if (hdr.tamanho_bss > 0) {
         fyd_memset(fyd_exec_arena + hdr.tamanho_codigo, 0, hdr.tamanho_bss);
     }
+
+    fydlog_escrever(LOG_INFO, "fyd: executando binario nativo em Long Mode");
 
     typedef int (*FydEntryFunc)(void);
     FydEntryFunc entry = (FydEntryFunc)(fyd_exec_arena + hdr.entry_offset);
@@ -123,21 +147,33 @@ int fyd_executar_binario(const void *buffer, uint64_t tamanho_buf) {
  * 2. INSTALADOR DE PACOTES (.fpkg)
  * ========================================================================= */
 int fyd_instalar_pacote(const void *buffer, uint64_t tamanho_buf) {
-    if (!buffer || tamanho_buf < sizeof(FydPkgHeader)) return -1;
+    if (!buffer || tamanho_buf < sizeof(FydPkgHeader)) {
+        fydlog_escrever(LOG_ERRO, "fpkg: cabecalho de pacote invalido ou vazio");
+        return -1;
+    }
 
     const FydPkgHeader *pkg = (const FydPkgHeader *)buffer;
-    if (pkg->magic != FYD_PKG_MAGIC) return -2;
+    if (pkg->magic != FYD_PKG_MAGIC) {
+        fydlog_escrever(LOG_ERRO, "fpkg: assinatura magica invalida (esperado FPKG)");
+        return -2;
+    }
 
     uint64_t offset = sizeof(FydPkgHeader);
     const uint8_t *base = (const uint8_t *)buffer;
 
     for (uint16_t i = 0; i < pkg->qtd_arquivos; i++) {
-        if (offset + sizeof(FydPkgEntry) > tamanho_buf) return -3;
+        if (offset + sizeof(FydPkgEntry) > tamanho_buf) {
+            fydlog_escrever(LOG_ERRO, "fpkg: entrada de arquivo truncada no pacote");
+            return -3;
+        }
 
         const FydPkgEntry *ent = (const FydPkgEntry *)(base + offset);
         offset += sizeof(FydPkgEntry);
 
-        if (offset + ent->tamanho > tamanho_buf) return -4;
+        if (offset + ent->tamanho > tamanho_buf) {
+            fydlog_escrever(LOG_ERRO, "fpkg: dados do arquivo excedem tamanho do pacote");
+            return -4;
+        }
 
         if (fyd_registrar_arquivo_extraido(ent->destino, base + offset, ent->tamanho) != 0) {
             return -5;
@@ -145,6 +181,7 @@ int fyd_instalar_pacote(const void *buffer, uint64_t tamanho_buf) {
         offset += ent->tamanho;
     }
 
+    fydlog_escrever(LOG_INFO, "fpkg: pacote instalado com sucesso em /fyd");
     return (int)pkg->qtd_arquivos;
 }
 
@@ -152,7 +189,10 @@ int fyd_instalar_pacote(const void *buffer, uint64_t tamanho_buf) {
  * 3. PARSER DE CONFIGURAÇÃO (.fcfg)
  * ========================================================================= */
 int fyd_cfg_ler_chave(const char *conteudo_cfg, const char *chave, char *valor_out, int max_len) {
-    if (!conteudo_cfg || !chave || !valor_out || max_len <= 0) return -1;
+    if (!conteudo_cfg || !chave || !valor_out || max_len <= 0) {
+        fydlog_escrever(LOG_AVISO, "fcfg: parametros invalidos ao ler configuracao");
+        return -1;
+    }
 
     int chave_len = fyd_strlen(chave);
     const char *p = conteudo_cfg;
