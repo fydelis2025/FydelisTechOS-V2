@@ -1072,11 +1072,6 @@ static int exibir_desktop_grafico(int L, int A) {
     char res_buf[48];
     char tmp[16];
 
-    //Funções do FydLog
-    fydlog_escrever(LOG_INFO, "Desktop grafico iniciado");
-    if (!disco_detectado) fydlog_escrever(LOG_AVISO, "Disco ATA primario nao respondeu");
-    if (!rede_ler_status_link()) fydlog_escrever(LOG_AVISO, "Link Ethernet E1000 desconectado");
-    
     /* Inicializa hardware PCI antes de ler o status para o Systray */
     audio_init();
     if (bt_detectar_placa() != 0) {
@@ -1135,6 +1130,11 @@ static int exibir_desktop_grafico(int L, int A) {
     int disco_detectado = (detectar_disco(0) != 0);
     int bt_estado       = (int)bt_ler_status();
     int audio_estado    = (int)audio_ler_status();
+
+    /* Registra inicialização e estado real dos drivers no FydLog (/fyd/dados/logs/sistema.flog) */
+    fydlog_escrever(LOG_INFO, "Desktop grafico iniciado");
+    if (!disco_detectado) fydlog_escrever(LOG_AVISO, "Disco ATA primario nao respondeu");
+    if (!rede_ler_status_link()) fydlog_escrever(LOG_AVISO, "Link Ethernet E1000 desconectado");
 
     /* Controle de tempo real do RTC / Systray com fuso horário do .fcfg */
     RtcDataHora dt_atual;
