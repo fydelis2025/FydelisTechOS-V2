@@ -31,7 +31,4 @@ typedef struct {
 // Instância da Calculadora (apps/acessorios/calculadora.c)
 extern FydelisApp app_calculadora;
 
-extern FydApp app_calculadora;
-extern FydApp app_visualizador_logs;
-
 #endif
