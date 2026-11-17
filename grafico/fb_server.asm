@@ -1,6 +1,6 @@
 ; ==========================================
-; FB_SERVER.ASM — COMPOSITOR NO KERNEL
-; Gerenciador de Janelas · Cursor sem Rastro
+; FB_SERVER.ASM — COMPOSITOR NO KERNEL  (VERSÃO CORRIGIDA)
+; Gerenciador de Janelas · Cursor sem Rastro · Desempenho Otimizado
 ; FydelisTech OS v4.2 · Salvador • Bahia
 ; ==========================================
 BITS 64
@@ -29,7 +29,7 @@ endstruc
 
 section .rodata
 align 8
-; Sprite 16x16 do cursor: 0 = transparente, 1 = borda preta, 2 = preenchimento ciano/branco
+; Sprite 16x16 do cursor: 0=transparente, 1=borda, 2=preenchimento
 cursor_sprite:
     db 1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
     db 1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0
@@ -58,6 +58,7 @@ cursor_ant_x:       resd 1
 cursor_ant_y:       resd 1
 cursor_salvo:       resb 1
 cursor_buffer:      resd TAM_CURSOR * TAM_CURSOR
+janelas_sujas:      resb 1    ; 1=precisa redesenhar janelas, 0=não
 
 section .text
 global ws_inicializar
@@ -66,6 +67,7 @@ global ws_desenhar_janelas
 global ws_atualizar_cursor
 global ws_verificar_clique
 global ws_apresentar
+global ws_marcar_janelas_sujas
 
 ; ==========================================
 ; INICIALIZAR SERVIDOR DE JANELAS
@@ -80,13 +82,19 @@ ws_inicializar:
     mov     dword [cursor_x], 0
     mov     dword [cursor_y], 0
     mov     byte [cursor_salvo], 0
+    mov     byte [janelas_sujas], 1    ; Força primeiro desenho
     mov     rax, 1
     ret
 
 ; ==========================================
+; MARCA QUE JANELAS PRECISAM SER REDESENHADAS
+; ==========================================
+ws_marcar_janelas_sujas:
+    mov     byte [janelas_sujas], 1
+    ret
+
+; ==========================================
 ; CRIAR JANELA
-; Entrada: RDI=x, RSI=y, RDX=larg, RCX=alt, R8D=cor
-; Saída: RAX = índice (0..15) ou -1
 ; ==========================================
 ws_criar_janela:
     push    rbx
@@ -115,6 +123,7 @@ ws_criar_janela:
     mov     byte [r12 + Janela.visivel], 1
     mov     [janela_ativa], ebx
 
+    mov     byte [janelas_sujas], 1    ; Nova janela = precisa redesenhar
     mov     rax, rbx
     pop     r12
     pop     rbx
@@ -127,16 +136,18 @@ ws_criar_janela:
     ret
 
 ; ==========================================
-; DESENHAR TODAS AS JANELAS VISÍVEIS
+; DESENHAR TODAS AS JANELAS — SÓ QUANDO PRECISAR
 ; ==========================================
 ws_desenhar_janelas:
+    cmp     byte [janelas_sujas], 0
+    je      .fim    ; ✅ Nada mudou — pula o redesenho pesado
+
     push    rbx
     push    r12
     push    r13
     push    r14
     push    r15
 
-    ; Restaura fundo sob o cursor antes de redesenhar janelas
     call    cursor_restaurar_fundo
 
     xor     rbx, rbx
@@ -152,11 +163,11 @@ ws_desenhar_janelas:
     mov     r13d, [r12 + Janela.x]
     mov     r14d, [r12 + Janela.y]
     mov     r15d, [r12 + Janela.largura]
-    add     r15d, r13d                  ; x2
+    add     r15d, r13d
     mov     ecx, [r12 + Janela.altura]
-    add     ecx, r14d                   ; y2
+    add     ecx, r14d
 
-    ; 1. Borda externa roxo neon (2px)
+    ; Borda externa
     mov     edi, r13d
     sub     edi, 2
     mov     esi, r14d
@@ -167,7 +178,7 @@ ws_desenhar_janelas:
     mov     r8d, 0xFF9D4EDD
     call    fb_preencher_retangulo
 
-    ; 2. Corpo da janela
+    ; Corpo da janela
     mov     edi, r13d
     mov     esi, r14d
     mov     edx, r15d
@@ -176,7 +187,7 @@ ws_desenhar_janelas:
     mov     r8d, [r12 + Janela.cor_fundo]
     call    fb_preencher_retangulo
 
-    ; 3. Barra de título (28px de altura)
+    ; Barra de título
     mov     edi, r13d
     mov     esi, r14d
     mov     edx, r15d
@@ -190,15 +201,17 @@ ws_desenhar_janelas:
     inc     rbx
     jmp     .loop
 
-.fim:
     pop     r15
     pop     r14
     pop     r13
     pop     r12
     pop     rbx
+
+    mov     byte [janelas_sujas], 0    ; ✅ Tudo atualizado
+.fim:
     ret
 
-; --- Restaura pixels salvos em cursor_buffer na posição anterior ---
+; --- Restaura fundo sob o cursor ---
 cursor_restaurar_fundo:
     cmp     byte [cursor_salvo], 0
     je      .ret
@@ -216,7 +229,7 @@ cursor_restaurar_fundo:
     mov     r14d, [fb_pitch]
     lea     r15, [cursor_buffer]
 
-    xor     ebx, ebx                    ; linha 0..15
+    xor     ebx, ebx
 .lin:
     mov     eax, r13d
     add     eax, ebx
@@ -227,7 +240,7 @@ cursor_restaurar_fundo:
     add     rax, [fb_base]
     lea     rdi, [rax + r12*4]
 
-    xor     ecx, ecx                    ; col 0..15
+    xor     ecx, ecx
 .col:
     mov     edx, r12d
     add     edx, ecx
@@ -256,7 +269,7 @@ cursor_restaurar_fundo:
 .ret:
     ret
 
-; --- Salva fundo atual e desenha sprite 16x16 do cursor ---
+; --- Salva fundo e desenha cursor — CORRIGIDO o índice do sprite ---
 cursor_desenhar_novo:
     cmp     qword [fb_base], 0
     je      .ret
@@ -271,12 +284,11 @@ cursor_desenhar_novo:
     mov     r13d, [cursor_y]
     mov     [cursor_ant_x], r12d
     mov     [cursor_ant_y], r13d
-
     mov     r14d, [fb_pitch]
     lea     r15, [cursor_buffer]
     lea     r8, [cursor_sprite]
 
-    xor     ebx, ebx
+    xor     ebx, ebx                    ; linha do cursor 0..15
 .lin:
     mov     eax, r13d
     add     eax, ebx
@@ -287,7 +299,7 @@ cursor_desenhar_novo:
     add     rax, [fb_base]
     lea     rdi, [rax + r12*4]
 
-    xor     ecx, ecx
+    xor     ecx, ecx                    ; coluna do cursor 0..15
 .col:
     mov     edx, r12d
     add     edx, ecx
@@ -296,26 +308,24 @@ cursor_desenhar_novo:
 
     ; Salva pixel original no buffer
     mov     eax, [rdi + rcx*4]
-    mov     [r15 + rcx*4], eax
+    mov     [r15 + rbx*TAM_CURSOR*4 + rcx*4], eax
 
-    ; Desenha pixel do ponteiro se não for transparente
-    movzx   edx, byte [r8 + rcx]
+    ; ✅ CORRIGIDO: Calcula índice = linha*16 + coluna
+    movzx   edx, byte [r8 + rbx*TAM_CURSOR + rcx]
     test    edx, edx
     jz      .skip_px
     cmp     edx, 1
     je      .cor_borda
-    mov     dword [rdi + rcx*4], 0xFF00F5D4   ; Preenchimento ciano neon
+    mov     dword [rdi + rcx*4], 0xFF00F5D4   ; Ciano neon
     jmp     .skip_px
 .cor_borda:
-    mov     dword [rdi + rcx*4], 0xFF0A0414   ; Contorno escuro
+    mov     dword [rdi + rcx*4], 0xFF0A0414   ; Escuro
 .skip_px:
     inc     ecx
     cmp     ecx, TAM_CURSOR
     jl      .col
 
 .prox_lin:
-    add     r15, TAM_CURSOR * 4
-    add     r8, TAM_CURSOR
     inc     ebx
     cmp     ebx, TAM_CURSOR
     jl      .lin
@@ -331,17 +341,17 @@ cursor_desenhar_novo:
     ret
 
 ; ==========================================
-; ATUALIZAR CURSOR (Lê mouse PS/2 e redesenha)
+; ATUALIZAR CURSOR — SÓ move o ponteiro, NÃO redesenha janelas!
 ; ==========================================
 ws_atualizar_cursor:
     call    mouse_ler_posicao
-    ; EDI = X, ESI = Y, EAX = botões
     cmp     byte [cursor_salvo], 0
     je      .mover
     cmp     edi, [cursor_x]
     jne     .mover
     cmp     esi, [cursor_y]
-    je      .fim
+    jne     .mover
+    jmp     .desenhar_cursor
 
 .mover:
     push    rdi
@@ -349,21 +359,19 @@ ws_atualizar_cursor:
     call    cursor_restaurar_fundo
     pop     rsi
     pop     rdi
-
     mov     [cursor_x], edi
     mov     [cursor_y], esi
-    call    cursor_desenhar_novo
 
-.fim:
+.desenhar_cursor:
+    call    cursor_desenhar_novo
     ret
 
 ; ==========================================
 ; VERIFICAR CLIQUE EM JANELA
-; Saída: RAX = índice da janela clicada (se botão esq pressionado) ou -1
 ; ==========================================
 ws_verificar_clique:
     call    mouse_ler_posicao
-    test    eax, 0x01                   ; Botão esquerdo pressionado?
+    test    eax, 0x01
     jz      .nenhum
 
     xor     rcx, rcx
