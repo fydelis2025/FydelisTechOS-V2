@@ -1,5 +1,5 @@
 ; ==========================================
-; FB_SERVER.ASM — COMPOSITOR NO KERNEL  (VERSÃO CORRIGIDA)
+; FB_SERVER.ASM — COMPOSITOR NO KERNEL  (VERSÃO FINAL)
 ; Gerenciador de Janelas · Cursor sem Rastro · Desempenho Otimizado
 ; FydelisTech OS v4.2 · Salvador • Bahia
 ; ==========================================
@@ -140,7 +140,7 @@ ws_criar_janela:
 ; ==========================================
 ws_desenhar_janelas:
     cmp     byte [janelas_sujas], 0
-    je      .fim    ; ✅ Nada mudou — pula o redesenho pesado
+    je      .fim    ; Nada mudou — pula o redesenho pesado
 
     push    rbx
     push    r12
@@ -207,7 +207,7 @@ ws_desenhar_janelas:
     pop     r12
     pop     rbx
 
-    mov     byte [janelas_sujas], 0    ; ✅ Tudo atualizado
+    mov     byte [janelas_sujas], 0    ; Tudo atualizado
 .fim:
     ret
 
@@ -247,14 +247,18 @@ cursor_restaurar_fundo:
     cmp     edx, [fb_largura]
     jge     .prox_lin
 
-    mov     eax, [r15 + rcx*4]
+    ; Corrigido: calcula offset fora do acesso à memória
+    mov     r9, rbx
+    shl     r9, 6              ; r9 = linha * 64 bytes (16 dwords)
+    lea     r9, [r9 + rcx*4]   ; r9 += coluna * 4 bytes
+    mov     eax, [r15 + r9]
     mov     [rdi + rcx*4], eax
+
     inc     ecx
     cmp     ecx, TAM_CURSOR
     jl      .col
 
 .prox_lin:
-    add     r15, TAM_CURSOR * 4
     inc     ebx
     cmp     ebx, TAM_CURSOR
     jl      .lin
@@ -269,7 +273,7 @@ cursor_restaurar_fundo:
 .ret:
     ret
 
-; --- Salva fundo e desenha cursor — CORRIGIDO o índice do sprite ---
+; --- Salva fundo e desenha cursor — CORRIGIDO sem endereço inválido ---
 cursor_desenhar_novo:
     cmp     qword [fb_base], 0
     je      .ret
@@ -306,12 +310,19 @@ cursor_desenhar_novo:
     cmp     edx, [fb_largura]
     jge     .prox_lin
 
-    ; Salva pixel original no buffer
+    ; Salva pixel original no buffer — sem múltiplos registradores no colchete
+    mov     r9, rbx
+    shl     r9, 6                  ; linha * 64 bytes
+    lea     r9, [r9 + rcx*4]       ; + coluna * 4 bytes
     mov     eax, [rdi + rcx*4]
-    mov     [r15 + rbx*TAM_CURSOR*4 + rcx*4], eax
+    mov     [r15 + r9], eax
 
-    ; ✅ CORRIGIDO: Calcula índice = linha*16 + coluna
-    movzx   edx, byte [r8 + rbx*TAM_CURSOR + rcx]
+    ; Lê pixel do sprite — cálculo fora do colchete
+    mov     r10, rbx
+    shl     r10, 4                  ; linha * 16 bytes
+    add     r10, rcx                ; + coluna
+    movzx   edx, byte [r8 + r10]
+
     test    edx, edx
     jz      .skip_px
     cmp     edx, 1
