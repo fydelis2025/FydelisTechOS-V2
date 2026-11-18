@@ -461,40 +461,25 @@ start:
 ; MODO GRAFICO
 ; ======================================
 .modo_grafico:
-    mov     rdi, COR_ROXO_ESCURO
+    call    clear_screen
+    mov     rdi, COR_FUNDO
     call    gpu_preencher_tela
 
-    ; Barra de progresso centralizada
-    mov     r10d, [fb_largura]
-    mov     r11d, [fb_altura]
-    mov     r12, r10
-    shr     r12, 1
-    mov     r13, 36
-    mov     r14, r10
-    sub     r14, r12
-    shr     r14, 1
-    mov     r15, r11
-    sub     r15, r13
-    shr     r15, 1
+    ; Garante alinhamento estrito de 16 bytes na pilha antes de chamar C (System V ABI)
+    push    rbp
+    mov     rbp, rsp
+    and     rsp, -16
 
-    ; Moldura neon
-    lea     rdi, [r14 - 2]
-    lea     rsi, [r15 - 2]
-    lea     rdx, [r14 + r12 + 2]
-    lea     rcx, [r15 + r13 + 2]
-    mov     r8d, COR_ROXO_NEON
-    call    gpu_preencher_retangulo
+    call    kernel_exec_bin
 
-    ; Fundo
-    mov     rdi, r14
-    mov     rsi, r15
-    lea     rdx, [r14 + r12]
-    lea     rcx, [r15 + r13]
-    mov     r8d, COR_CINZA_VIDRO
-    call    gpu_preencher_retangulo
+    mov     rsp, rbp
+    pop     rbp
 
-    ; Animacao
-    xor     ebx, ebx
+    call    clear_screen
+    lea     rsi, [msg_encerrado]
+    call    print_string
+    call    print_newline
+    jmp     .modo_terminal
 .barra_loop:
     cmp     ebx, 100
     jg      .barra_fim
@@ -547,7 +532,7 @@ start:
 ; MODO TERMINAL
 ; ======================================
 .modo_terminal:
-    call    clear_screen
+    call    clear_screen            ; Zera cursor_x e cursor_y no topo (0, 0)
     mov     rdi, COR_FUNDO
     call    gpu_preencher_tela
     lea     rsi, [msg_cabecalho]
