@@ -547,6 +547,7 @@ start:
 ; MODO TERMINAL
 ; ======================================
 .modo_terminal:
+    call    clear_screen
     mov     rdi, COR_FUNDO
     call    gpu_preencher_tela
     lea     rsi, [msg_cabecalho]
