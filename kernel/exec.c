@@ -914,6 +914,13 @@ static char ler_tecla_ps2(void) {
 - TELA 1: ANIMAÇÃO DE CARREGAMENTO DO AMBIENTE GRÁFICO (Via Disco ATA)
 - ============================================================================ */
 static void exibir_splash_carregamento(int L, int A) {
+    if (fb_base) {
+        uint32_t total_pixels = (fb_pitch ? (fb_pitch / 4) : (uint32_t)L) * (uint32_t)A;
+        for (uint32_t i = 0; i < total_pixels; i++) {
+            fb_base[i] = COR_FUNDO_ESCURO;
+        }
+    }
+
     desenhar_background_ata(LBA_BG_SPLASH, L, A);
     desenhar_retangulo_solido(0, 0, L, 4, COR_CIANO_NEON);
 
@@ -961,12 +968,11 @@ static void exibir_splash_carregamento(int L, int A) {
         int pct_x = barra_x + barra_larg - ((int)str_len(pct_buf) * 8);
         gpu_escrever_texto(pct_buf, pct_x, barra_y + barra_alt + 12, COR_CIANO_NEON);
 
-        for (volatile uint64_t d = 0; d < 80000; d++) {
+        for (volatile uint64_t d = 0; d < 1800000; d++) {
             __asm__ volatile ("pause");
         }
     }
 }
-
 /* ============================================================================
 - TELA 2: LOGIN GRÁFICO INTERATIVO (Via Disco ATA, Cursor Limpo e Tab/Backspace)
 - ============================================================================ */
