@@ -44,6 +44,8 @@ extern cve_guard_iniciar
 extern cve_guard_adicionar_regra
 extern cve_guard_inspecionar_comando
 
+extern dhcp_cliente_iniciar
+
 global bytes_para_gb
 global _entry16
 global start
@@ -385,6 +387,7 @@ start:
     call    construir_estrutura_sistema
     call    hosts_inicializar
     call    fydlog_inicializar
+    call    dhcp_cliente_iniciar
 
     ; Inicializa o CVE Guard e carrega assinaturas base (com alinhamento ABI 16B)
     push    rbp
