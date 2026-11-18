@@ -106,6 +106,11 @@ extern FydelisApp app_visualizador_logs;
 extern FydelisApp app_explorer;
 extern FydelisApp app_browser;
 
+extern void dhcp_cliente_iniciar(void);
+extern void dhcp_cliente_processar(void);
+extern uint32_t dhcp_ler_status(void);
+extern const char *rede_ler_ip(void);
+
 enum {
     MODO_JANELA_SISTEMA  = 1,
     MODO_JANELA_APPS     = 3,
@@ -1861,6 +1866,18 @@ static int exibir_desktop_grafico(int L, int A) {
         int clique_agora = botao_esq_pressionado && !(btn_ant & 0x01);
         btn_ant = mb;
 
+        /* Polling nao-bloqueante do Cliente DHCP (Discover -> Offer -> Request -> Ack) */
+        uint32_t dhcp_st_antes = dhcp_ler_status();
+        if (dhcp_st_antes == 1 || dhcp_st_antes == 2) {
+            dhcp_cliente_processar();
+            if (dhcp_ler_status() == 3) {
+                eth_copiar_str(eth_status_msg, "DHCP Ativo: ", sizeof(eth_status_msg));
+                int p = eth_str_len(eth_status_msg);
+                eth_copiar_str(eth_status_msg + p, rede_ler_ip(), sizeof(eth_status_msg) - p);
+                precisa_redesenhar = 1;
+            }
+        }
+
         if (arrastando) {
             if (botao_esq_pressionado) {
                 int novo_x = mx - drag_offset_x;
@@ -1965,7 +1982,10 @@ static int exibir_desktop_grafico(int L, int A) {
             int term_btn_x = L - SYSTRAY_LARGURA - term_btn_w - 16;
             int tray_x     = L - SYSTRAY_LARGURA - 8;
 
-            if (wifi_popup_aberto && wifi_popup_processar_clique(mx, my)) {
+            if (eth_popup_aberto && eth_popup_processar_clique(mx, my)) {
+                precisa_redesenhar = 1;
+            }
+            else if (wifi_popup_aberto && wifi_popup_processar_clique(mx, my)) {
                 precisa_redesenhar = 1;
             }
             else if (ponto_no_retangulo(mx, my, btn_f_x, btn_f_y, btn_f_w, btn_f_h)) {
@@ -2174,7 +2194,10 @@ static int exibir_desktop_grafico(int L, int A) {
 
         char tecla;
         while ((tecla = ler_tecla_ps2()) != 0) {
-            if (app_browser.aberta) {
+            if (eth_popup_aberto) {
+                eth_popup_on_key(tecla);
+                precisa_redesenhar = 1;
+            } else if (app_browser.aberta) {
                 if (tecla == 27) {
                     app_browser.aberta = 0;
                     arrastando_brw = 0;
