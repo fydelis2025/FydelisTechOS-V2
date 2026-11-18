@@ -377,7 +377,7 @@ interpret_command:
 ; ============================================================================
 
 do_cls:
-    ; Limpa o framebuffer VESA em vez de usar modo legado 80x25
+    call    clear_screen
     cmp     qword [fb_base], 0
     je      .fallback_vga
     mov     rdi, COR_FUNDO_TERM
