@@ -103,10 +103,11 @@ extern uint64_t obter_tamanho_disco(void);
 
 extern const char *fs_ler_config_padrao(void);
 extern FydelisApp app_visualizador_logs;
+extern FydelisApp app_explorer;
+extern FydelisApp app_browser;
 
 enum {
     MODO_JANELA_SISTEMA  = 1,
-    MODO_JANELA_EXPLORER = 2,
     MODO_JANELA_APPS     = 3,
     MODO_JANELA_CONFIG   = 4
 };
@@ -149,6 +150,7 @@ static inline void descansar_cpu_hlt(void) {
 
 static const ItemMenuIniciar itens_menu[] = {
     { "Explorer (/fyd)", icone_pasta_aberta,  0, 1 },
+    { "FydelisBrowser",  icone_ethernet,      0, 10 },
     { "Aplicativos",     icone_iniciar,       0, 2 },
     { "FydelTerm",       icone_terminal,      0, 3 },
     { "Agenda",          icone_agenda,        0, 4 },
@@ -516,7 +518,7 @@ static void desenhar_caixa_com_borda(int x, int y, int w, int h, int espessura, 
     );
 }
 
-static void gpu_desenhar_icone(const uint32_t *pixels, int x, int y, int w, int h) {
+void gpu_desenhar_icone(const uint32_t *pixels, int x, int y, int w, int h) {
     if (!pixels || !fb_base) return;
     uint32_t pitch_bytes = fb_pitch ? fb_pitch : (fb_largura * 4);
 
@@ -1397,6 +1399,14 @@ static int exibir_desktop_grafico(int L, int A) {
     int logs_drag_off_x = 0;
     int logs_drag_off_y = 0;
 
+    int arrastando_exp  = 0;
+    int exp_drag_off_x  = 0;
+    int exp_drag_off_y  = 0;
+
+    int arrastando_brw  = 0;
+    int brw_drag_off_x  = 0;
+    int brw_drag_off_y  = 0;
+
     int taskbar_h      = 38;
     int taskbar_y      = A - taskbar_h;
     int btn_f_x        = 8;
@@ -1407,7 +1417,7 @@ static int exibir_desktop_grafico(int L, int A) {
     int menu_aberto    = 0;
     int menu_x         = 8;
     int menu_w         = 410;
-    int menu_h         = 304;
+    int menu_h         = 336;
     int menu_y         = taskbar_y - menu_h - 4;
 
     int precisa_redesenhar = 1;
@@ -1548,6 +1558,9 @@ static int exibir_desktop_grafico(int L, int A) {
             gpu_desenhar_icone(icone_config, 22, 122, ICONE_TAM, ICONE_TAM);
             gpu_escrever_texto("Configuracoes", 48, 124, COR_TEXTO_SUAVE);
 
+            gpu_desenhar_icone(icone_ethernet, 22, 156, ICONE_TAM, ICONE_TAM);
+            gpu_escrever_texto("FydelisBrowser", 48, 158, COR_CIANO_NEON);
+
             /* 3.1 Widgets de CPU, RAM e Disco Total */
             desenhar_widgets_sistema(L, &telemetria);
 
@@ -1560,10 +1573,7 @@ static int exibir_desktop_grafico(int L, int A) {
 
                 const uint32_t *icone_win = icone_sistema;
                 const char *titulo_win    = "Painel do Sistema";
-                if (modo_janela == MODO_JANELA_EXPLORER) {
-                    icone_win  = icone_pasta_aberta;
-                    titulo_win = "FydelisExplorer - Arvore /fyd";
-                } else if (modo_janela == MODO_JANELA_APPS) {
+                if (modo_janela == MODO_JANELA_APPS) {
                     icone_win  = icone_iniciar;
                     titulo_win = "Central de Aplicativos";
                 } else if (modo_janela == MODO_JANELA_CONFIG) {
@@ -1593,20 +1603,7 @@ static int exibir_desktop_grafico(int L, int A) {
                     gpu_escrever_texto(diretorio_atual, cx + 128, cy, COR_VERDE_NEON);
                     cy += 34;
                     desenhar_caixa_com_borda(cx, cy, win_w - 44, 42, 1, COR_BORDA_SUTIL, COR_INPUT_BG);
-                    gpu_escrever_texto("Clique no botao [F] abaixo para abrir Explorer, Apps ou Config.", cx + 12, cy + 13, COR_ROXO_CLARO);
-                } else if (modo_janela == MODO_JANELA_EXPLORER) {
-                    gpu_escrever_texto("Diretorios montados no boot (estrutura.asm):", cx, cy, COR_CIANO_NEON);
-                    cy += 24;
-                    const char **pastas = fs_obter_lista_pastas();
-                    uint64_t total = fs_total_pastas();
-                    int max_linhas = (win_h - 90) / 22;
-                    if ((int)total < max_linhas) max_linhas = (int)total;
-
-                    for (int i = 0; i < max_linhas; i++) {
-                        gpu_desenhar_icone(icone_pasta_fechada, cx, cy - 2, ICONE_TAM, ICONE_TAM);
-                        gpu_escrever_texto(pastas[i], cx + 26, cy, COR_TEXTO_BRANCO);
-                        cy += 22;
-                    }
+                    gpu_escrever_texto("Clique no botao [F] abaixo para abrir Explorer, Browser ou Config.", cx + 12, cy + 13, COR_ROXO_CLARO);
                 } else if (modo_janela == MODO_JANELA_APPS) {
                     gpu_escrever_texto("Aplicativos instalados em /fyd/apps:", cx, cy, COR_CIANO_NEON);
                     cy += 28;
@@ -1645,11 +1642,18 @@ static int exibir_desktop_grafico(int L, int A) {
                 }
             }
 
+            /* Janelas Modulares Independentes */
             if (app_calculadora.aberta) {
                 app_calculadora.desenhar();
             }
             if (app_visualizador_logs.aberta) {
                 app_visualizador_logs.desenhar();
+            }
+            if (app_explorer.aberta) {
+                app_explorer.desenhar();
+            }
+            if (app_browser.aberta) {
+                app_browser.desenhar();
             }
 
             /* 5. Barra de Tarefas Inferior */
@@ -1666,8 +1670,7 @@ static int exibir_desktop_grafico(int L, int A) {
                 janela_aberta ? COR_CIANO_NEON : COR_BORDA_SUTIL,
                 janela_aberta ? COR_HOVER : COR_INPUT_BG);
             const char *rotulo_aba = "Painel do Sistema";
-            if (modo_janela == MODO_JANELA_EXPLORER) rotulo_aba = "Explorer (/fyd)";
-            else if (modo_janela == MODO_JANELA_APPS) rotulo_aba = "Aplicativos";
+            if (modo_janela == MODO_JANELA_APPS) rotulo_aba = "Aplicativos";
             else if (modo_janela == MODO_JANELA_CONFIG) rotulo_aba = "Configuracoes";
             gpu_escrever_texto(rotulo_aba, tab_x + 16, btn_f_y + 8, COR_TEXTO_BRANCO);
 
@@ -1759,6 +1762,44 @@ static int exibir_desktop_grafico(int L, int A) {
             }
         }
 
+        if (arrastando_exp) {
+            if (botao_esq_pressionado) {
+                int nx = mx - exp_drag_off_x;
+                int ny = my - exp_drag_off_y;
+                if (nx < 0) nx = 0;
+                if (nx + app_explorer.w > L) nx = L - app_explorer.w;
+                if (ny < 34) ny = 34;
+                if (ny + app_explorer.h > taskbar_y) ny = taskbar_y - app_explorer.h;
+                if (nx != app_explorer.x || ny != app_explorer.y) {
+                    app_explorer.x = nx;
+                    app_explorer.y = ny;
+                    precisa_redesenhar = 1;
+                }
+            } else {
+                arrastando_exp = 0;
+                precisa_redesenhar = 1;
+            }
+        }
+
+        if (arrastando_brw) {
+            if (botao_esq_pressionado) {
+                int nx = mx - brw_drag_off_x;
+                int ny = my - brw_drag_off_y;
+                if (nx < 0) nx = 0;
+                if (nx + app_browser.w > L) nx = L - app_browser.w;
+                if (ny < 34) ny = 34;
+                if (ny + app_browser.h > taskbar_y) ny = taskbar_y - app_browser.h;
+                if (nx != app_browser.x || ny != app_browser.y) {
+                    app_browser.x = nx;
+                    app_browser.y = ny;
+                    precisa_redesenhar = 1;
+                }
+            } else {
+                arrastando_brw = 0;
+                precisa_redesenhar = 1;
+            }
+        }
+
         if (clique_agora) {
             int term_btn_w = 132;
             int term_btn_x = L - SYSTRAY_LARGURA - term_btn_w - 16;
@@ -1795,15 +1836,16 @@ static int exibir_desktop_grafico(int L, int A) {
 
                         if (ponto_no_retangulo(mx, my, ix, iy, iw, 32)) {
                             int acao = itens_menu[i].acao_id;
-                            if (acao == 1)      { modo_janela = MODO_JANELA_EXPLORER; janela_aberta = 1; }
-                            else if (acao == 2) { modo_janela = MODO_JANELA_APPS;     janela_aberta = 1; }
-                            else if (acao == 3) { cursor_restaurar_fundo(); return 0; }
-                            else if (acao == 4) { modo_janela = MODO_JANELA_APPS;     janela_aberta = 1; }
-                            else if (acao == 5) { modo_janela = MODO_JANELA_SISTEMA;  janela_aberta = 1; }
-                            else if (acao == 6) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
-                            else if (acao == 7) { modo_janela = MODO_JANELA_CONFIG;   janela_aberta = 1; }
-                            else if (acao == 8) { app_calculadora.abrir(); }
-                            else if (acao == 9) { app_visualizador_logs.abrir(); }
+                            if (acao == 1)       { app_explorer.abrir(); }
+                            else if (acao == 2)  { modo_janela = MODO_JANELA_APPS;    janela_aberta = 1; }
+                            else if (acao == 3)  { cursor_restaurar_fundo(); return 0; }
+                            else if (acao == 4)  { modo_janela = MODO_JANELA_APPS;    janela_aberta = 1; }
+                            else if (acao == 5)  { modo_janela = MODO_JANELA_SISTEMA; janela_aberta = 1; }
+                            else if (acao == 6)  { modo_janela = MODO_JANELA_CONFIG;  janela_aberta = 1; }
+                            else if (acao == 7)  { modo_janela = MODO_JANELA_CONFIG;  janela_aberta = 1; }
+                            else if (acao == 8)  { app_calculadora.abrir(); }
+                            else if (acao == 9)  { app_visualizador_logs.abrir(); }
+                            else if (acao == 10) { app_browser.abrir(); }
 
                             menu_aberto = 0;
                             precisa_redesenhar = 1;
@@ -1811,6 +1853,48 @@ static int exibir_desktop_grafico(int L, int A) {
                         }
                     }
                 }
+            }
+            else if (app_browser.aberta &&
+                     ponto_no_retangulo(mx, my, app_browser.x, app_browser.y,
+                                        app_browser.w, app_browser.h)) {
+                int rel_x = mx - app_browser.x;
+                int rel_y = my - app_browser.y;
+
+                if (rel_x >= app_browser.w - 24 && rel_x <= app_browser.w - 4 &&
+                    rel_y >= 3 && rel_y <= 24) {
+                    app_browser.aberta = 0;
+                    arrastando_brw = 0;
+                } else if (rel_y >= 0 && rel_y <= 28) {
+                    arrastando_brw = 1;
+                    brw_drag_off_x = rel_x;
+                    brw_drag_off_y = rel_y;
+                } else {
+                    app_browser.on_click(rel_x, rel_y);
+                }
+
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
+            }
+            else if (app_explorer.aberta &&
+                     ponto_no_retangulo(mx, my, app_explorer.x, app_explorer.y,
+                                        app_explorer.w, app_explorer.h)) {
+                int rel_x = mx - app_explorer.x;
+                int rel_y = my - app_explorer.y;
+
+                if (rel_x >= app_explorer.w - 24 && rel_x <= app_explorer.w - 4 &&
+                    rel_y >= 3 && rel_y <= 24) {
+                    app_explorer.aberta = 0;
+                    arrastando_exp = 0;
+                } else if (rel_y >= 0 && rel_y <= 28) {
+                    arrastando_exp = 1;
+                    exp_drag_off_x = rel_x;
+                    exp_drag_off_y = rel_y;
+                } else {
+                    app_explorer.on_click(rel_x, rel_y);
+                }
+
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
             }
             else if (app_calculadora.aberta &&
                      ponto_no_retangulo(mx, my, app_calculadora.x, app_calculadora.y,
@@ -1876,8 +1960,7 @@ static int exibir_desktop_grafico(int L, int A) {
                 return 0;
             }
             else if (ponto_no_retangulo(mx, my, 22, 54, 110, 22)) {
-                modo_janela = MODO_JANELA_EXPLORER;
-                janela_aberta = 1;
+                app_explorer.abrir();
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
@@ -1890,6 +1973,11 @@ static int exibir_desktop_grafico(int L, int A) {
             else if (ponto_no_retangulo(mx, my, 22, 122, 140, 22)) {
                 modo_janela = MODO_JANELA_CONFIG;
                 janela_aberta = 1;
+                menu_aberto = 0;
+                precisa_redesenhar = 1;
+            }
+            else if (ponto_no_retangulo(mx, my, 22, 156, 150, 22)) {
+                app_browser.abrir();
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
@@ -1919,7 +2007,23 @@ static int exibir_desktop_grafico(int L, int A) {
 
         char tecla;
         while ((tecla = ler_tecla_ps2()) != 0) {
-            if (app_calculadora.aberta) {
+            if (app_browser.aberta) {
+                if (tecla == 27) {
+                    app_browser.aberta = 0;
+                    arrastando_brw = 0;
+                } else {
+                    app_browser.on_key(tecla);
+                }
+                precisa_redesenhar = 1;
+            } else if (app_explorer.aberta) {
+                if (tecla == 27) {
+                    app_explorer.aberta = 0;
+                    arrastando_exp = 0;
+                } else {
+                    app_explorer.on_key(tecla);
+                }
+                precisa_redesenhar = 1;
+            } else if (app_calculadora.aberta) {
                 if (tecla == 27) {
                     app_calculadora.aberta = 0;
                     arrastando_calc = 0;
