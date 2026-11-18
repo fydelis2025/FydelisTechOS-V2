@@ -1,0 +1,841 @@
+
+Seções de entrada descartadas
+
+ .comment       0x0000000000000000       0x20 boot_config.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 boot_config.o
+ .eh_frame      0x0000000000000000       0x98 boot_config.o
+ .comment       0x0000000000000000       0x20 exec.o
+ .note.GNU-stack
+                0x0000000000000000        0x0 exec.o
+ .eh_frame      0x0000000000000000      0x228 exec.o
+
+Configuração de memória
+
+Nome             Origem             Tamanho            Atributos
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Mapa de memória e script de vinculador
+
+                0x0000000000008000                . = 0x8000
+
+.text           0x0000000000008000     0xe039
+ *(.text._start)
+ *(.text .text.*)
+ .text          0x0000000000008000      0x411 boot_config.o
+                0x0000000000008193                parse_boot_config
+ *fill*         0x0000000000008411        0xf 
+ .text          0x0000000000008420      0x188 buffer.o
+                0x0000000000008420                add_char
+                0x0000000000008480                read_command
+                0x00000000000084d0                reset_buffer
+                0x0000000000008521                parse_line
+ *fill*         0x00000000000085a8        0x8 
+ .text          0x00000000000085b0      0x197 commands.o
+                0x00000000000085b0                interpret_command
+                0x000000000000863e                do_help
+                0x00000000000086dd                do_cls
+                0x00000000000086e3                do_echo
+                0x0000000000008702                do_ver
+                0x000000000000870f                do_exit
+                0x0000000000008724                do_reboot
+ *fill*         0x0000000000008747        0x9 
+ .text          0x0000000000008750       0x74 context.o
+                0x0000000000008750                contexto_salvar
+                0x000000000000876c                contexto_restaurar
+                0x0000000000008788                trocar_contexto
+ *fill*         0x00000000000087c4        0xc 
+ .text          0x00000000000087d0      0x143 ../drivers/ata.o
+                0x00000000000087d0                ata_inicializar
+                0x0000000000008816                ata_ler_setor
+                0x000000000000889b                ata_ler_multiplo
+                0x00000000000088d2                disco_ler_setor_impl
+                0x00000000000088d7                disco_ler_multiplo_impl
+ *fill*         0x0000000000008913        0xd 
+ .text          0x0000000000008920      0x246 ../drivers/audio.o
+                0x0000000000008920                audio_init
+                0x0000000000008971                audio_status
+                0x0000000000008a02                audio_set_volume
+                0x0000000000008a1e                audio_mute_toggle
+                0x0000000000008a27                bt_init
+                0x0000000000008a30                do_audio
+                0x0000000000008a36                do_vol
+                0x0000000000008a91                do_mute
+                0x0000000000008ac1                do_sound
+                0x0000000000008aea                do_bt_scan
+                0x0000000000008aff                do_bt_pair
+                0x0000000000008b14                str_to_int
+                0x0000000000008b36                print_dec
+ *fill*         0x0000000000008b66        0xa 
+ .text          0x0000000000008b70      0x255 ../drivers/bluetooth.o
+                0x0000000000008b70                bt_detectar_placa
+                0x0000000000008bd6                bt_inicializar
+                0x0000000000008c41                sys_bt_scan
+                0x0000000000008c7d                sys_bt_conectar
+                0x0000000000008cd8                sys_bt_desconectar
+                0x0000000000008d07                sys_bt_enviar_dados
+                0x0000000000008d38                sys_bt_receber_dados
+ *fill*         0x0000000000008dc5        0xb 
+ .text          0x0000000000008dd0      0x3f6 ../drivers/cpu.o
+                0x0000000000008dd0                cpu_detectar
+                0x0000000000008fc1                cpu_ativar_recursos
+                0x000000000000901e                cpu_tem_vmx
+                0x0000000000009028                cpu_tem_nx
+                0x0000000000009032                cpu_obter_info
+                0x0000000000009044                cpu_imprimir_resumo
+ *fill*         0x00000000000091c6        0xa 
+ .text          0x00000000000091d0      0x4c3 ../drivers/dhcp_servidor.o
+                0x00000000000091d0                dhcp_servidor_iniciar
+                0x0000000000009210                dhcp_servidor_processar
+                0x00000000000094b6                dhcp_servidor_status
+                0x00000000000094f9                dhcp_cliente_iniciar
+                0x000000000000953e                dhcp_cliente_processar
+ *fill*         0x0000000000009693        0xd 
+ .text          0x00000000000096a0      0x248 ../drivers/disco.o
+                0x00000000000096a0                detectar_disco
+                0x00000000000096cc                identificar_disco
+                0x0000000000009767                obter_tamanho_disco
+                0x0000000000009795                disco_ler_setor
+                0x0000000000009821                disco_escrever_setor
+                0x00000000000098b5                flush_disco
+                0x00000000000098d6                syscall_obter_tamanho
+                0x00000000000098dc                syscall_ler_setor
+                0x00000000000098e2                syscall_escrever_setor
+ *fill*         0x00000000000098e8        0x8 
+ .text          0x00000000000098f0      0x1d4 ../drivers/impressora.o
+                0x00000000000098f0                impressora_inicializar
+                0x0000000000009966                impressora_listar
+                0x0000000000009967                impressora_imprimir_texto
+                0x00000000000099fe                impressora_imprimir_arquivo
+                0x0000000000009a21                impressora_status
+                0x0000000000009a28                impressora_cancelar
+                0x0000000000009a3f                impressora_definir_padrao
+ *fill*         0x0000000000009ac4        0xc 
+ .text          0x0000000000009ad0       0xa9 ../drivers/keyboard.o
+                0x0000000000009ad0                get_key
+                0x0000000000009b5f                set_layout_us
+                0x0000000000009b6c                set_layout_ptbr
+ *fill*         0x0000000000009b79        0x7 
+ .text          0x0000000000009b80      0x2cc ../drivers/mouse.o
+                0x0000000000009bb7                mouse_detectar
+                0x0000000000009bde                mouse_inicializar
+                0x0000000000009cbb                mouse_ler_posicao
+                0x0000000000009cd3                mouse_ler_botoes
+                0x0000000000009cda                mouse_definir_posicao
+                0x0000000000009d39                mouse_tratar_irq
+ *fill*         0x0000000000009e4c        0x4 
+ .text          0x0000000000009e50      0x55a ../drivers/particao.o
+                0x0000000000009e50                inicializar_disco
+                0x0000000000009fb3                listar_unidades
+                0x000000000000a245                criar_unidade
+                0x000000000000a2c4                remover_unidade
+                0x000000000000a301                formatar_unidade
+                0x000000000000a357                criar_particao
+                0x000000000000a35d                apagar_entrada_particao
+                0x000000000000a363                formatar_fat32
+                0x000000000000a369                formatar_exfat
+                0x000000000000a36f                detectar_tabela
+ *fill*         0x000000000000a3aa        0x6 
+ .text          0x000000000000a3b0       0x53 ../drivers/pci.o
+                0x000000000000a3b0                pci_ler_dispositivo
+                0x000000000000a3cb                pci_ler_classe
+                0x000000000000a3e4                pci_ler_bar0
+ *fill*         0x000000000000a403        0xd 
+ .text          0x000000000000a410      0xef1 ../drivers/rede_bridge.o
+                0x000000000000a6fd                rede_exec_ping
+                0x000000000000ab06                rede_ler_iface_nome
+                0x000000000000ab11                rede_ler_mac
+                0x000000000000ab1c                rede_ler_ip
+                0x000000000000ab27                rede_ler_mascara
+                0x000000000000ab32                rede_ler_gateway
+                0x000000000000ab3d                rede_ler_dns
+                0x000000000000ab48                rede_ler_status_link
+                0x000000000000ab5e                rede_ler_bytes_rx
+                0x000000000000ab66                rede_ler_bytes_tx
+                0x000000000000ab6e                rede_ler_wifi_disponiveis
+                0x000000000000ab72                rede_conectar_wifi
+                0x000000000000ab76                rede_desconectar_wifi
+                0x000000000000ab7a                rede_ler_tabela_arp
+                0x000000000000ab85                rede_ler_conexoes
+                0x000000000000ab89                rede_exec_traceroute
+ *fill*         0x000000000000b301        0xf 
+ .text          0x000000000000b310      0x3ba ../drivers/rede.o
+                0x000000000000b310                do_ipconfig
+                0x000000000000b47e                do_wifi
+                0x000000000000b581                do_ping
+                0x000000000000b5b9                do_arp
+                0x000000000000b5f6                do_netstat
+                0x000000000000b633                do_traceroute
+ *fill*         0x000000000000b6ca        0x6 
+ .text          0x000000000000b6d0      0x1d9 ../drivers/texto.o
+                0x000000000000b6d0                texto_iniciar
+                0x000000000000b6fb                texto_limpar_tela
+                0x000000000000b725                texto_char
+                0x000000000000b7c7                texto_string
+                0x000000000000b817                texto_centralizado
+                0x000000000000b85e                texto_barra_superior
+ *fill*         0x000000000000b8a9        0x7 
+ .text          0x000000000000b8b0       0xd5 ../drivers/timer.o
+                0x000000000000b8b0                timer_inicializar
+                0x000000000000b92c                timer_isr
+                0x000000000000b952                timer_ler_ticks
+                0x000000000000b95b                timer_esperar_ms
+                0x000000000000b97d                timer_por_segundo
+ *fill*         0x000000000000b985        0xb 
+ .text          0x000000000000b990       0x20 ../drivers/usb.o
+                0x000000000000b990                usb_scan_controllers
+ .text          0x000000000000b9b0      0x485 ../drivers/video.o
+                0x000000000000baaf                set_color
+                0x000000000000bae0                print_char
+                0x000000000000bd63                set_input_base
+                0x000000000000bd74                update_cursor
+                0x000000000000bd74                move_cursor
+                0x000000000000bd75                print_string
+                0x000000000000bd86                print_newline
+                0x000000000000bd90                clear_screen
+                0x000000000000be06                print_num
+ *fill*         0x000000000000be35        0xb 
+ .text          0x000000000000be40      0x9c5 ../drivers/wifi.o
+                0x000000000000be40                wifi_detectar_placa
+                0x000000000000be8f                wifi_inicializar
+                0x000000000000befe                sys_wifi_scan
+                0x000000000000befe                bridge_wifi_scan
+                0x000000000000bf5c                sys_wifi_conectar
+                0x000000000000bf5c                bridge_wifi_conectar
+                0x000000000000bfe0                bridge_wifi_desconectar
+                0x000000000000bfe0                sys_wifi_desconectar
+                0x000000000000c0a7                wifi_definir_senha
+                0x000000000000c726                wifi_conectar_completo
+                0x000000000000c7cc                wifi_esta_conectado
+                0x000000000000c7d6                wifi_ler_ssid
+                0x000000000000c7eb                wifi_ler_status
+ *fill*         0x000000000000c805        0xb 
+ .text          0x000000000000c810      0x531 editor.o
+                0x000000000000c810                do_fydel
+                0x000000000000cd33                carregar_arquivo
+                0x000000000000cd3b                salvar_arquivo
+ *fill*         0x000000000000cd41        0xf 
+ .text          0x000000000000cd50       0x2b exceptions.o
+                0x000000000000cd50                fydelis_panic_excecao
+                0x000000000000cd54                qt_main_entry
+                0x000000000000cd55                isr_comum
+                0x000000000000cd62                isr_pf_handler
+                0x000000000000cd75                isr_gp_handler
+                0x000000000000cd77                isr_de_handler
+ .text          0x000000000000cd7b     0x1d54 exec.o
+                0x000000000000d230                gpu_escrever_texto
+                0x000000000000ea3f                kernel_exec_bin
+ *fill*         0x000000000000eacf        0x1 
+ .text          0x000000000000ead0      0x5db fs.o
+                0x000000000000ead0                fs_inicializar
+                0x000000000000ed26                fs_listar_dir
+                0x000000000000edef                fs_criar_pasta
+                0x000000000000efd1                fs_copiar
+                0x000000000000f045                fs_obter_caminho_atual
+                0x000000000000f04d                fs_definir_caminho_atual
+                0x000000000000f08d                fs_procurar
+ *fill*         0x000000000000f0ab        0x5 
+ .text          0x000000000000f0b0       0x1f ../grafico/amd_gpu.o
+                0x000000000000f0b0                amd_detectar
+                0x000000000000f0b4                amd_inicializar
+                0x000000000000f0c1                amd_preencher_retangulo
+                0x000000000000f0c6                amd_esta_ativo
+ *fill*         0x000000000000f0cf        0x1 
+ .text          0x000000000000f0d0       0x98 ../grafico/fb_generico.o
+                0x000000000000f0d0                fb_preencher_retangulo
+ *fill*         0x000000000000f168        0x8 
+ .text          0x000000000000f170      0x332 ../grafico/fb_server.o
+                0x000000000000f170                ws_inicializar
+                0x000000000000f1ac                ws_criar_janela
+                0x000000000000f206                ws_desenhar_janelas
+                0x000000000000f408                ws_atualizar_cursor
+                0x000000000000f441                ws_verificar_clique
+                0x000000000000f4a1                ws_apresentar
+ *fill*         0x000000000000f4a2        0xe 
+ .text          0x000000000000f4b0       0xef ../grafico/gop.o
+                0x000000000000f4b0                gop_detectar
+                0x000000000000f4da                gop_inicializar
+                0x000000000000f55c                gop_obter_framebuffer
+                0x000000000000f595                gop_esta_ativo
+ *fill*         0x000000000000f59f        0x1 
+ .text          0x000000000000f5a0       0x4d ../grafico/gpu_dispatch.o
+                0x000000000000f5a0                gpu_inicializar
+                0x000000000000f5cf                gpu_preencher_retangulo
+                0x000000000000f5e0                gpu_obter_tipo
+                0x000000000000f5e7                gpu_inicializar_todos
+ *fill*         0x000000000000f5ed        0x3 
+ .text          0x000000000000f5f0      0x10e ../grafico/intel_gpu.o
+                0x000000000000f5f0                intel_detectar
+                0x000000000000f61a                intel_inicializar
+                0x000000000000f690                intel_preencher_retangulo
+                0x000000000000f6f4                intel_esta_ativo
+ *fill*         0x000000000000f6fe        0x2 
+ .text          0x000000000000f700      0x162 ../grafico/pci_gpu.o
+                0x000000000000f700                pci_gpu_varrer_barramento
+                0x000000000000f80e                pci_gpu_ativar_mmio
+                0x000000000000f82a                pci_gpu_obter_info
+ *fill*         0x000000000000f862        0xe 
+ .text          0x000000000000f870      0x248 ../grafico/vesafb.o
+                0x000000000000f870                fb_inicializar
+                0x000000000000f8d6                fb_limpar
+                0x000000000000f90f                fb_desenhar_pixel
+                0x000000000000f94e                fb_preencher_tela
+                0x000000000000f987                fb_recalcular_geometria
+                0x000000000000f9c4                fb_redimensionar
+                0x000000000000fa0a                fb_ajustar_fonte
+                0x000000000000fa8f                fb_get_geometria
+                0x000000000000fab3                gpu_preencher_tela
+ *fill*         0x000000000000fab8        0x8 
+ .text          0x000000000000fac0       0xb5 ../grafico/virtio_gpu.o
+                0x000000000000fac0                virtio_detectar
+                0x000000000000fae3                virtio_inicializar
+                0x000000000000fb1d                virtio_preencher_retangulo
+                0x000000000000fb6b                virtio_esta_ativo
+ *fill*         0x000000000000fb75        0xb 
+ .text          0x000000000000fb80      0x2ad heap.o
+                0x000000000000fb80                heap_inicializar
+                0x000000000000fc31                heap_alocar
+                0x000000000000fcb4                heap_liberar
+                0x000000000000fe25                heap_disponivel
+ *fill*         0x000000000000fe2d        0x3 
+ .text          0x000000000000fe30        0x0 ../idioma/en_us.o
+ .text          0x000000000000fe30       0x63 ../idioma/idioma.o
+                0x000000000000fe30                idioma_iniciar
+                0x000000000000fe37                idioma_selecionar
+                0x000000000000fe7b                idioma_por_indice
+                0x000000000000fe8d                idioma_quantos
+ *fill*         0x000000000000fe93        0xd 
+ .text          0x000000000000fea0        0x0 ../idioma/pt_br.o
+ .text          0x000000000000fea0      0x6bf kernel.o
+                0x000000000000fea0                _entry16
+                0x0000000000010018                start
+                0x0000000000010407                bytes_para_gb
+ *fill*         0x000000000001055f        0x1 
+ .text          0x0000000000010560       0xb1 memmap.o
+                0x0000000000010560                mem_detect_e820
+                0x00000000000105c1                mem_inicializar
+                0x00000000000105f6                mem_get_total
+                0x00000000000105ff                mem_get_free
+                0x0000000000010608                mem_get_used
+ *fill*         0x0000000000010611        0xf 
+ .text          0x0000000000010620      0x204 paging.o
+                0x0000000000010620                paging_init
+                0x00000000000106e3                paging_carregar
+                0x00000000000106e7                paging_mapear
+                0x0000000000010808                paging_desmapear
+                0x000000000001080f                paging_ativo
+ *fill*         0x0000000000010824        0xc 
+ .text          0x0000000000010830      0x476 ../pentest/pentest.o
+                0x0000000000010830                do_pentest
+ *fill*         0x0000000000010ca6        0xa 
+ .text          0x0000000000010cb0       0xa4 pmm.o
+                0x0000000000010cb0                pmm_inicializar
+                0x0000000000010ccf                pmm_alocar
+                0x0000000000010d20                pmm_liberar
+                0x0000000000010d4c                pmm_contar_livres
+ *fill*         0x0000000000010d54        0xc 
+ .text          0x0000000000010d60      0x102 scheduler.o
+                0x0000000000010d60                scheduler_inicializar
+                0x0000000000010d8a                scheduler_adicionar
+                0x0000000000010dcb                scheduler_tick
+                0x0000000000010e3b                scheduler_trocar
+ *fill*         0x0000000000010e62        0xe 
+ .text          0x0000000000010e70       0x13 stubs_kernel.o
+                0x0000000000010e70                console_setcolor
+                0x0000000000010e70                console_read
+                0x0000000000010e70                console_write
+                0x0000000000010e76                processo_exit
+                0x0000000000010e76                processo_getpid
+                0x0000000000010e76                processo_spawn
+                0x0000000000010e7a                gerenciador_alocar
+                0x0000000000010e7a                mem_liberar_usuario
+                0x0000000000010e7a                mem_alocar_usuario
+                0x0000000000010e7e                vm_inicializar
+                0x0000000000010e7e                tratar_falha_pagina
+                0x0000000000010e7e                escrever_tela_vm
+                0x0000000000010e7e                vmx_launch
+                0x0000000000010e82                print_hex
+ *fill*         0x0000000000010e83        0xd 
+ .text          0x0000000000010e90      0x26d syscall_handler.o
+                0x0000000000010e90                syscall_handler
+ *fill*         0x00000000000110fd        0x3 
+ .text          0x0000000000011100      0x1f6 ../system/compat_stubs.o
+                0x0000000000011100                strcmpi
+                0x0000000000011146                strcmp
+                0x000000000001116b                strcpy
+                0x0000000000011176                strlen
+                0x0000000000011184                int_para_str
+                0x00000000000111bc                ip_para_string
+                0x0000000000011211                usb_listar_dispositivos
+                0x0000000000011214                dhcp_exec
+                0x0000000000011256                tx_pacote
+                0x0000000000011259                rx_processa
+                0x000000000001125c                sys_rede_enviar
+                0x000000000001125f                wifi_tx_quadro
+                0x0000000000011262                wifi_rx_quadro
+                0x0000000000011265                sys_usb_listar
+                0x0000000000011268                sys_usb_enviar_dados
+                0x000000000001126b                sys_usb_encontrar_dispositivo
+                0x000000000001126e                fila_criar
+                0x000000000001127e                fila_adicionar
+                0x00000000000112b9                fila_processar
+                0x00000000000112c9                fila_limpar
+                0x00000000000112d9                arquivo_existe
+                0x00000000000112dc                arquivo_criar
+                0x00000000000112de                arquivo_abrir
+                0x00000000000112e1                arquivo_ler_linha
+                0x00000000000112e4                arquivo_escrever_linha
+                0x00000000000112e7                arquivo_fechar
+                0x00000000000112ea                arquivo_ler_todo
+                0x00000000000112ed                fs_criar_arquivo
+                0x00000000000112f0                fs_ler_arquivo
+                0x00000000000112f3                obter_unidade_sistema
+ *fill*         0x00000000000112f6        0xa 
+ .text          0x0000000000011300       0xf7 ../system/fydlog.o
+                0x0000000000011311                fydlog_inicializar
+                0x0000000000011348                fydlog_escrever
+                0x00000000000113d0                fydlog_ler_todos
+                0x00000000000113e0                fydlog_fechar
+ *fill*         0x00000000000113f7        0x9 
+ .text          0x0000000000011400      0x397 ../system/hosts_mgr.o
+                0x0000000000011400                hosts_inicializar
+                0x00000000000114ea                hosts_listar
+                0x000000000001155f                hosts_adicionar
+                0x00000000000115e5                hosts_remover
+                0x0000000000011639                hosts_resolver
+ *fill*         0x0000000000011797        0x9 
+ .text          0x00000000000117a0       0x1e ../user/entry.o
+                0x00000000000117a0                _user_start
+                0x00000000000117b4                usuario_exit
+ *fill*         0x00000000000117be        0x2 
+ .text          0x00000000000117c0       0x48 ../user/fs_client.o
+                0x00000000000117c0                fs_montar
+                0x00000000000117c8                fs_desmontar
+                0x00000000000117d0                fs_abrir
+                0x00000000000117d8                fs_fechar
+                0x00000000000117e0                fs_ler
+                0x00000000000117e8                fs_escrever
+                0x00000000000117f0                fs_listar
+                0x00000000000117f8                fs_criar_dir
+                0x0000000000011800                fs_remover
+ *fill*         0x0000000000011808        0x8 
+ .text          0x0000000000011810       0x12 ../user/init.o
+                0x0000000000011810                _start_init
+ *fill*         0x0000000000011822        0xe 
+ .text          0x0000000000011830       0x38 ../user/net_client.o
+                0x0000000000011830                net_inicializar
+                0x0000000000011838                net_wifi_conectar
+                0x0000000000011840                net_status
+                0x0000000000011848                net_enviar
+                0x0000000000011850                net_receber
+                0x0000000000011858                net_meu_ip
+                0x0000000000011860                net_desconectar
+ *fill*         0x0000000000011868        0x8 
+ .text          0x0000000000011870       0x48 ../user/security_client.o
+                0x0000000000011870                fw_habilitar
+                0x0000000000011878                fw_desabilitar
+                0x0000000000011880                fw_regra_adicionar
+                0x0000000000011888                av_verificar
+                0x0000000000011890                av_varrer
+                0x0000000000011898                av_quarentena
+                0x00000000000118a0                cve_verificar
+                0x00000000000118a8                sec_listar_ameacas
+                0x00000000000118b0                sec_status
+ *fill*         0x00000000000118b8        0x8 
+ .text          0x00000000000118c0       0x70 ../user/syscall_stub.o
+                0x00000000000118c0                sys_write
+                0x00000000000118c8                sys_read
+                0x00000000000118d0                sys_setcolor
+                0x00000000000118d8                sys_exit
+                0x00000000000118e0                sys_spawn
+                0x00000000000118e8                sys_alloc
+                0x00000000000118f0                sys_free
+                0x00000000000118f8                sys_vm_iniciar
+                0x0000000000011900                sys_vm_parar
+                0x0000000000011908                sys_vm_status
+                0x0000000000011910                sys_disk_mount
+                0x0000000000011918                sys_file_open
+                0x0000000000011920                sys_file_read
+                0x0000000000011928                sys_file_write
+ .text          0x0000000000011930      0x671 ../user/terminal.o
+                0x0000000000011930                fydelterm_main
+ *fill*         0x0000000000011fa1        0xf 
+ .text          0x0000000000011fb0       0x99 ../user/vm_client.o
+                0x0000000000011fb0                vm_iniciar
+                0x0000000000011fb8                vm_parar
+                0x0000000000011fc0                vm_status
+                0x0000000000011fc8                vm_mem_alocar
+                0x0000000000011fd0                vm_disco_anexar
+                0x0000000000011fd8                vm_listar
+                0x0000000000011fe0                vm_status_imprimir
+ *fill*         0x0000000000012049        0x7 
+ .text          0x0000000000012050       0x73 ../virtual/convidado_com_disco.o
+                0x0000000000012050                _start_convidado
+ *fill*         0x00000000000120c3        0xd 
+ .text          0x00000000000120d0       0x94 ../virtual/ept_integracao.o
+                0x00000000000120d0                mem_aninhada_inicializar
+                0x0000000000012126                mem_aninhada_mapear_convidado
+                0x0000000000012145                mem_aninhada_flush
+ *fill*         0x0000000000012164        0xc 
+ .text          0x0000000000012170      0x366 ../virtual/ept_npt.o
+                0x0000000000012170                ept_inicializar
+                0x00000000000122bf                ept_mapear_faixa
+                0x0000000000012304                ept_flush_todas
+                0x0000000000012328                npt_inicializar
+                0x000000000001246b                npt_mapear_faixa
+                0x00000000000124b0                npt_flush_todas
+ *fill*         0x00000000000124d6      0xb2a 
+ .text          0x0000000000013000       0xf1 ../virtual/memvirt.o
+                0x0000000000013000                init_virtual_memory
+                0x000000000001307d                load_page_tables
+                0x00000000000130ac                page_fault_handler
+ *fill*         0x00000000000130f1        0xf 
+ .text          0x0000000000013100       0xdf ../virtual/plataforma_detect.o
+                0x0000000000013100                detectar_plataforma
+                0x0000000000013152                inicializar_plataforma
+                0x0000000000013198                executar_vm
+                0x00000000000131be                desligar_plataforma
+ *fill*         0x00000000000131df        0x1 
+ .text          0x00000000000131e0       0xdd ../virtual/svm_exit_handler.o
+                0x00000000000131e0                svm_handle_exit
+ *fill*         0x00000000000132bd      0xd43 
+ .text          0x0000000000014000      0x123 ../virtual/svm_init.o
+                0x0000000000014000                svm_initialize
+                0x0000000000014031                vmcb_setup
+                0x000000000001409c                svm_launch
+                0x0000000000014108                svm_exit
+ *fill*         0x0000000000014123        0xd 
+ .text          0x0000000000014130       0x20 ../virtual/virt_detect.o
+                0x0000000000014130                detect_vmx_support
+                0x0000000000014140                detect_svm_support
+ *fill*         0x0000000000014150      0xeb0 
+ .text          0x0000000000015000       0xec ../virtual/vm_core.o
+                0x0000000000015000                vmcs_init
+                0x00000000000150ad                vm_launch
+                0x00000000000150dc                vm_load_guest
+ *fill*         0x00000000000150ec        0x4 
+ .text          0x00000000000150f0       0x37 ../virtual/vm_disco_interface.o
+                0x00000000000150f0                vm_disco_tratar_chamada
+ *fill*         0x0000000000015127        0x9 
+ .text          0x0000000000015130       0x51 ../virtual/vm_execucao_loop.o
+                0x0000000000015130                vm_executar
+ *fill*         0x0000000000015181        0xf 
+ .text          0x0000000000015190      0x173 ../virtual/vmexit_handler.o
+                0x0000000000015190                vmx_handle_exit
+ *fill*         0x0000000000015303        0xd 
+ .text          0x0000000000015310       0x5d ../virtual/vm_integracao.o
+                0x0000000000015310                _start
+ *fill*         0x000000000001536d      0xc93 
+ .text          0x0000000000016000       0x39 ../virtual/vmx_init.o
+                0x0000000000016000                vmx_enter
+                0x0000000000016029                vmx_exit
+
+.iplt           0x0000000000016039        0x0
+ .iplt          0x0000000000016039        0x0 boot_config.o
+
+.rodata         0x0000000000016040     0x259e
+ *(.rodata .rodata.*)
+ .rodata        0x0000000000016040      0xaea commands.o
+                0x00000000000169c1                do_listar
+                0x00000000000169c7                do_login
+ *fill*         0x0000000000016b2a        0x6 
+ .rodata        0x0000000000016b30      0x100 ../drivers/keyboard.o
+ .rodata        0x0000000000016c30      0x410 ../drivers/texto.o
+                0x0000000000016c30                fonte_8x8
+ .rodata        0x0000000000017040      0x9e0 exec.o
+ .rodata        0x0000000000017a20      0x100 ../grafico/fb_server.o
+ .rodata        0x0000000000017b20      0x140 ../idioma/en_us.o
+ .rodata        0x0000000000017c60       0x18 ../idioma/idioma.o
+ .rodata        0x0000000000017c78      0x174 ../idioma/pt_br.o
+ .rodata        0x0000000000017dec      0x3f6 kernel.o
+ *fill*         0x00000000000181e2        0x2 
+ .rodata        0x00000000000181e4      0x3ad ../user/terminal.o
+ *fill*         0x0000000000018591        0x3 
+ .rodata        0x0000000000018594       0x36 ../user/vm_client.o
+ *fill*         0x00000000000185ca        0x6 
+ .rodata        0x00000000000185d0        0xe ../virtual/vm_core.o
+                0x00000000000185d0                vm_test_guest_code
+
+.rela.dyn       0x00000000000185e0        0x0
+ .rela.got      0x00000000000185e0        0x0 boot_config.o
+ .rela.iplt     0x00000000000185e0        0x0 boot_config.o
+ .rela.text     0x00000000000185e0        0x0 boot_config.o
+
+.data           0x00000000000185e0     0x25b6
+ *(.data .data.*)
+ .data          0x00000000000185e0        0x0 boot_config.o
+ .data          0x00000000000185e0     0x149d commands.o
+                0x0000000000018afe                do_mkpart
+                0x0000000000018b7e                do_rmpart
+                0x0000000000018bef                do_format
+                0x0000000000018c67                do_fstype
+                0x0000000000018cfe                do_bootmode
+                0x0000000000018d4a                do_blkid
+                0x0000000000018d55                do_df
+                0x0000000000018d67                do_fsinfo
+                0x0000000000018e8f                do_bt
+                0x0000000000018f91                do_usb
+                0x0000000000019016                do_criar_pasta
+                0x000000000001906b                do_remover
+                0x00000000000190c0                do_copiar
+                0x0000000000019144                cmd_ping
+                0x00000000000191a3                cmd_traceroute
+                0x00000000000191e0                cmd_dhcp
+                0x000000000001922c                cmd_status_rede
+                0x0000000000019380                cmd_arp
+                0x0000000000019398                cmd_limpar_rede
+                0x000000000001940a                cmd_wifi
+                0x00000000000198b6                cmd_dhcp_servidor
+                0x0000000000019a72                cmd_fydlog
+ *fill*         0x0000000000019a7d        0x3 
+ .data          0x0000000000019a80       0xee ../drivers/audio.o
+ *fill*         0x0000000000019b6e        0x2 
+ .data          0x0000000000019b70       0x19 ../drivers/bluetooth.o
+ *fill*         0x0000000000019b89        0x3 
+ .data          0x0000000000019b8c       0x91 ../drivers/dhcp_servidor.o
+ *fill*         0x0000000000019c1d        0x3 
+ .data          0x0000000000019c20       0xba ../drivers/impressora.o
+ *fill*         0x0000000000019cda        0x6 
+ .data          0x0000000000019ce0        0x8 ../drivers/keyboard.o
+ .data          0x0000000000019ce8      0x16e ../drivers/particao.o
+ *fill*         0x0000000000019e56        0x2 
+ .data          0x0000000000019e58      0x143 ../drivers/rede_bridge.o
+ *fill*         0x0000000000019f9b        0x5 
+ .data          0x0000000000019fa0      0x213 ../drivers/rede.o
+ *fill*         0x000000000001a1b3        0x1 
+ .data          0x000000000001a1b4        0x4 ../drivers/texto.o
+ .data          0x000000000001a1b8        0x2 ../drivers/usb.o
+ *fill*         0x000000000001a1ba        0x2 
+ .data          0x000000000001a1bc       0x48 ../drivers/video.o
+ .data          0x000000000001a204      0x204 ../drivers/wifi.o
+                0x000000000001a204                WifiRede_size
+                0x000000000001a2c4                wifi_comando_listar
+ .data          0x000000000001a408      0x1ce editor.o
+ .data          0x000000000001a5d6        0x0 exec.o
+ *fill*         0x000000000001a5d6        0x2 
+ .data          0x000000000001a5d8        0xc ../grafico/gpu_dispatch.o
+ *fill*         0x000000000001a5e4        0x4 
+ .data          0x000000000001a5e8       0x18 ../idioma/en_us.o
+                0x000000000001a5e8                pacote_en_us
+ .data          0x000000000001a600        0xc ../idioma/idioma.o
+                0x000000000001a600                idioma_ativo
+                0x000000000001a604                tabela_ativa
+ *fill*         0x000000000001a60c        0x4 
+ .data          0x000000000001a610       0x18 ../idioma/pt_br.o
+                0x000000000001a610                pacote_pt_br
+ .data          0x000000000001a628       0x18 memmap.o
+ .data          0x000000000001a640      0x33c ../pentest/pentest.o
+ .data          0x000000000001a97c       0x10 pmm.o
+                0x000000000001a97c                mem_total
+                0x000000000001a984                mem_livre
+ .data          0x000000000001a98c       0x22 stubs_kernel.o
+                0x000000000001a98c                vmx_ativo
+                0x000000000001a98d                svm_ativo
+                0x000000000001a98e                vm_guest_stack
+                0x000000000001a996                vm_guest_cr3
+                0x000000000001a99e                pilha_usuario_top
+                0x000000000001a9a6                init_entry
+ *fill*         0x000000000001a9ae        0x2 
+ .data          0x000000000001a9b0       0x65 ../system/fydlog.o
+ *fill*         0x000000000001aa15        0x3 
+ .data          0x000000000001aa18       0xaa ../system/hosts_mgr.o
+ *fill*         0x000000000001aac2        0x6 
+ .data          0x000000000001aac8        0x8 ../user/entry.o
+ .data          0x000000000001aad0       0x60 ../user/terminal.o
+ .data          0x000000000001ab30       0x5d ../virtual/convidado_com_disco.o
+ *fill*         0x000000000001ab8d        0x3 
+ .data          0x000000000001ab90        0x6 ../virtual/plataforma_detect.o
+                0x000000000001ab90                cpu_vendor
+
+.got            0x000000000001ab98        0x0
+ .got           0x000000000001ab98        0x0 boot_config.o
+
+.got.plt        0x000000000001ab98        0x0
+ .got.plt       0x000000000001ab98        0x0 boot_config.o
+
+.igot.plt       0x000000000001ab98        0x0
+ .igot.plt      0x000000000001ab98        0x0 boot_config.o
+
+.bss            0x000000000001b000    0x4d020
+                0x000000000001b000                __bss_start = .
+ *(COMMON)
+ *(.bss .bss.*)
+ .bss           0x000000000001b000        0x0 boot_config.o
+ .bss           0x000000000001b000       0xd8 buffer.o
+                0x000000000001b000                buffer
+                0x000000000001b080                buf_head
+                0x000000000001b088                buf_tail
+                0x000000000001b090                argc
+                0x000000000001b098                argv
+ *fill*         0x000000000001b0d8        0x8 
+ .bss           0x000000000001b0e0      0x142 commands.o
+ *fill*         0x000000000001b222        0xe 
+ .bss           0x000000000001b230        0xc ../drivers/ata.o
+ *fill*         0x000000000001b23c        0x4 
+ .bss           0x000000000001b240      0x2f8 ../drivers/bluetooth.o
+ .bss           0x000000000001b538       0x39 ../drivers/cpu.o
+ *fill*         0x000000000001b571      0xa8f 
+ .bss           0x000000000001c000      0x630 ../drivers/dhcp_servidor.o
+                0x000000000001c000                dhcp_servidor_ativo
+                0x000000000001c150                dhcp_ip_atual
+ .bss           0x000000000001c630     0x240c ../drivers/disco.o
+                0x000000000001e83c                buffer_setor
+ .bss           0x000000000001ea3c       0x60 ../drivers/impressora.o
+ *fill*         0x000000000001ea9c        0x4 
+ .bss           0x000000000001eaa0       0x11 ../drivers/mouse.o
+ *fill*         0x000000000001eab1        0xf 
+ .bss           0x000000000001eac0     0x21ad ../drivers/particao.o
+                0x000000000001fd20                mapa_unidades
+                0x000000000002050c                mapa_dispositivos
+ *fill*         0x0000000000020c6d      0x393 
+ .bss           0x0000000000021000    0x12278 ../drivers/rede_bridge.o
+ .bss           0x0000000000033278       0x18 ../drivers/timer.o
+ .bss           0x0000000000033290       0x20 ../drivers/video.o
+                0x0000000000033290                cursor_pos
+ .bss           0x00000000000332b0      0xd1a ../drivers/wifi.o
+                0x00000000000332e0                wifi_scan_lista
+ *fill*         0x0000000000033fca        0x6 
+ .bss           0x0000000000033fd0     0x2011 editor.o
+ .bss           0x0000000000035fe1        0x0 exec.o
+ *fill*         0x0000000000035fe1       0x1f 
+ .bss           0x0000000000036000     0x2319 fs.o
+ *fill*         0x0000000000038319        0x3 
+ .bss           0x000000000003831c        0x1 ../grafico/amd_gpu.o
+ *fill*         0x000000000003831d       0x23 
+ .bss           0x0000000000038340      0x615 ../grafico/fb_server.o
+ *fill*         0x0000000000038955      0x6ab 
+ .bss           0x0000000000039000       0x22 ../grafico/gop.o
+ *fill*         0x0000000000039022      0xfde 
+ .bss           0x000000000003a000       0x19 ../grafico/intel_gpu.o
+ *fill*         0x000000000003a019        0x7 
+ .bss           0x000000000003a020       0x26 ../grafico/pci_gpu.o
+ *fill*         0x000000000003a046      0xfba 
+ .bss           0x000000000003b000       0x44 ../grafico/vesafb.o
+                0x000000000003b000                fb_base
+                0x000000000003b010                fb_largura
+                0x000000000003b014                fb_altura
+                0x000000000003b018                fb_pitch
+                0x000000000003b01c                fb_bpp
+                0x000000000003b024                fb_linhasize
+ *fill*         0x000000000003b044      0xfbc 
+ .bss           0x000000000003c000       0x19 ../grafico/virtio_gpu.o
+ *fill*         0x000000000003c019        0x7 
+ .bss           0x000000000003c020     0x8009 heap.o
+ *fill*         0x0000000000044029      0xfd7 
+ .bss           0x0000000000045000     0x4000 kernel.o
+ .bss           0x0000000000049000     0x3000 paging.o
+                0x0000000000049000                pml4
+                0x000000000004a000                pdpt
+                0x000000000004b000                pdt
+ .bss           0x000000000004c000     0x8004 pmm.o
+ *fill*         0x0000000000054004        0x4 
+ .bss           0x0000000000054008       0x94 scheduler.o
+ .bss           0x000000000005409c      0x8e4 ../system/compat_stubs.o
+                0x000000000005416c                rx_bytes_total
+                0x0000000000054174                tx_bytes_total
+ .bss           0x0000000000054980     0x1002 ../system/fydlog.o
+ *fill*         0x0000000000055982        0x2 
+ .bss           0x0000000000055984     0x16cd ../system/hosts_mgr.o
+ *fill*         0x0000000000057051        0xf 
+ .bss           0x0000000000057060     0x2000 ../user/init.o
+ .bss           0x0000000000059060      0x110 ../user/terminal.o
+ *fill*         0x0000000000059170      0xe90 
+ .bss           0x000000000005a000     0x2010 ../virtual/ept_npt.o
+                0x000000000005a000                ept_pml4
+                0x000000000005b000                eptp_value
+                0x000000000005b008                npt_pml4
+ .bss           0x000000000005c010     0x4000 ../virtual/memvirt.o
+                0x000000000005c010                pml4_table
+                0x000000000005d010                pdpt_table
+                0x000000000005e010                pd_table
+                0x000000000005f010                pt_table
+ *fill*         0x0000000000060010      0xff0 
+ .bss           0x0000000000061000     0x2008 ../virtual/svm_init.o
+                0x0000000000061000                vmcb
+                0x0000000000062000                host_save_area
+ *fill*         0x0000000000063008      0xff8 
+ .bss           0x0000000000064000     0x3020 ../virtual/vm_core.o
+                0x0000000000064000                vmcs_region
+                0x0000000000067000                vm_guest_rip
+                0x0000000000067008                vm_guest_rsp
+ .bss           0x0000000000067020     0x1000 ../virtual/vmx_init.o
+                0x0000000000067020                vmxon_region
+                0x0000000000068020                __bss_end = .
+
+/DISCARD/
+ *(.comment)
+ *(.eh_frame)
+ *(.note.*)
+LOAD boot_config.o
+LOAD buffer.o
+LOAD commands.o
+LOAD context.o
+LOAD ../drivers/ata.o
+LOAD ../drivers/audio.o
+LOAD ../drivers/bluetooth.o
+LOAD ../drivers/cpu.o
+LOAD ../drivers/dhcp_servidor.o
+LOAD ../drivers/disco.o
+LOAD ../drivers/impressora.o
+LOAD ../drivers/keyboard.o
+LOAD ../drivers/mouse.o
+LOAD ../drivers/particao.o
+LOAD ../drivers/pci.o
+LOAD ../drivers/rede_bridge.o
+LOAD ../drivers/rede.o
+LOAD ../drivers/texto.o
+LOAD ../drivers/timer.o
+LOAD ../drivers/usb.o
+LOAD ../drivers/video.o
+LOAD ../drivers/wifi.o
+LOAD editor.o
+LOAD exceptions.o
+LOAD exec.o
+LOAD fs.o
+LOAD ../grafico/amd_gpu.o
+LOAD ../grafico/fb_generico.o
+LOAD ../grafico/fb_server.o
+LOAD ../grafico/gop.o
+LOAD ../grafico/gpu_dispatch.o
+LOAD ../grafico/intel_gpu.o
+LOAD ../grafico/pci_gpu.o
+LOAD ../grafico/vesafb.o
+LOAD ../grafico/virtio_gpu.o
+LOAD heap.o
+LOAD ../idioma/en_us.o
+LOAD ../idioma/idioma.o
+LOAD ../idioma/pt_br.o
+LOAD kernel.o
+LOAD memmap.o
+LOAD paging.o
+LOAD ../pentest/pentest.o
+LOAD pmm.o
+LOAD scheduler.o
+LOAD stubs_kernel.o
+LOAD syscall_handler.o
+LOAD ../system/compat_stubs.o
+LOAD ../system/fydlog.o
+LOAD ../system/hosts_mgr.o
+LOAD ../user/entry.o
+LOAD ../user/fs_client.o
+LOAD ../user/init.o
+LOAD ../user/net_client.o
+LOAD ../user/security_client.o
+LOAD ../user/syscall_stub.o
+LOAD ../user/terminal.o
+LOAD ../user/vm_client.o
+LOAD ../virtual/convidado_com_disco.o
+LOAD ../virtual/ept_integracao.o
+LOAD ../virtual/ept_npt.o
+LOAD ../virtual/memvirt.o
+LOAD ../virtual/plataforma_detect.o
+LOAD ../virtual/svm_exit_handler.o
+LOAD ../virtual/svm_init.o
+LOAD ../virtual/virt_detect.o
+LOAD ../virtual/vm_core.o
+LOAD ../virtual/vm_disco_interface.o
+LOAD ../virtual/vm_execucao_loop.o
+LOAD ../virtual/vmexit_handler.o
+LOAD ../virtual/vm_integracao.o
+LOAD ../virtual/vmx_init.o
+OUTPUT(/dev/null elf64-x86-64)
