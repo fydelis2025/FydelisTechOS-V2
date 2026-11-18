@@ -36,6 +36,9 @@ Na versão **v4.2**, o sistema abandonou o modo texto VGA legado e passou a oper
 ### 🪟 Área de Trabalho Gráfica
 <img src="Desktop.png" alt="Área de Trabalho do Sistema" width="500" style="border: 2px solid #7b2cbf; border-radius: 8px; padding: 4px;" />
 
+### 🪟 Logs e Controle de CVE
+<img src="cve.png" alt="CVE" width="500" style="border: 2px solid #7b2cbf; border-radius: 8px; padding: 4px;" />
+
 > Desktop funcional com barra de tarefas, Menu Iniciar, janelas arrastáveis e suporte a mouse PS/2.
 
 ---
