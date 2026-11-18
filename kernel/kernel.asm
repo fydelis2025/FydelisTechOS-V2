@@ -43,6 +43,10 @@ extern fydlog_inicializar
 ;extern pci_init
 ;extern usb_scan_controllers
 
+extern cve_guard_iniciar
+extern cve_guard_adicionar_regra
+extern cve_guard_inspecionar_comando
+
 global bytes_para_gb
 global _entry16
 global start
@@ -384,6 +388,28 @@ start:
     call    construir_estrutura_sistema
     call    hosts_inicializar
     call    fydlog_inicializar
+    ; Inicializa o CVE Guard e carrega assinaturas base
+    call    cve_guard_iniciar
+
+    lea     rdi, [rel cve_id_1]
+    lea     rsi, [rel cve_pad_1]
+    lea     rdx, [rel cve_msg_1]
+    call    cve_guard_adicionar_regra
+
+    lea     rdi, [rel cve_id_2]
+    lea     rsi, [rel cve_pad_2]
+    lea     rdx, [rel cve_msg_2]
+    call    cve_guard_adicionar_regra
+
+    lea     rdi, [rel cve_id_3]
+    lea     rsi, [rel cve_pad_3]
+    lea     rdx, [rel cve_msg_3]
+    call    cve_guard_adicionar_regra
+
+    lea     rdi, [rel cve_id_4]
+    lea     rsi, [rel cve_pad_4]
+    lea     rdx, [rel cve_msg_4]
+    call    cve_guard_adicionar_regra
 
     ; ======================================
     ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
@@ -564,8 +590,20 @@ main_loop:
     mov     byte [buffer + rax], 0
     cmp     dword [buf_head], 0
     je      main_loop
+
+    ; Inspeciona o comando contra as regras do CVE Guard
+    lea     rdi, [rel buffer]
+    call    cve_guard_inspecionar_comando
+    cmp     rax, 1
+    je      .comando_bloqueado
+
     call    parse_line
     call    interpret_command
+    jmp     main_loop
+
+.comando_bloqueado:
+    lea     rsi, [rel msg_cve_bloqueado]
+    call    print_string
     jmp     main_loop
 
 ; ======================================
