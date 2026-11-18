@@ -1,5 +1,6 @@
 ; ==========================================
 ; 🌐 DHCP UNIFICADO (SERVIDOR & CLIENTE RFC 2131)
+; Encapsulamento Ethernet + IPv4 + UDP + Integração IP Fixo
 ; FydelisTech OS v4.2 — Salvador • Bahia 🇧🇷
 ; ==========================================
 BITS 64
@@ -42,7 +43,7 @@ DHCP_ST_REQUEST     equ 2
 DHCP_ST_BOUND       equ 3
 
 ; ========== CONFIGURAÇÃO DO SERVIDOR EMBUTIDO ==========
-SERVIDOR_IP         equ 0x0102000A   ; 10.0.2.1  (little-endian)
+SERVIDOR_IP         equ 0x0102000A   ; 10.0.2.1  (network byte order)
 IP_INICIO           equ 0x1002000A   ; 10.0.2.16
 IP_FIM              equ 0xFE02000A   ; 10.0.2.254
 MASCARA             equ 0x00FFFFFF   ; 255.255.255.0
@@ -50,11 +51,15 @@ GATEWAY_IP          equ SERVIDOR_IP
 DNS_IP              equ SERVIDOR_IP
 TEMPO_CONCESSAO     equ 0x80510100   ; 86400s (24h) em big-endian
 DHCP_PKT_TAM        equ 300
+DHCP_FRAME_TAM      equ 342          ; 14 (ETH) + 20 (IP) + 8 (UDP) + 300 (BOOTP)
 
-; ========== EXTERNAIS ==========
+; ========== EXTERNAIS (REDE.ASM & KERNEL) ==========
 extern tx_pacote, rx_processa
 extern print_string, print_newline, print_num
 extern ip_para_string
+extern rede_definir_ip_estatico
+extern inicializar_nic_mmio
+extern mac_addr
 
 ; ========== EXPORTAÇÃO ==========
 global dhcp_servidor_iniciar
@@ -65,6 +70,7 @@ global dhcp_cliente_iniciar
 global dhcp_cliente_processar
 global dhcp_cliente_resetar
 global dhcp_definir_mac
+global dhcp_definir_ip_estatico
 global dhcp_ler_status
 global dhcp_ip_atual
 global dhcp_mascara
@@ -93,6 +99,7 @@ dhcp_mac_local:      resb 6
 
 dhcp_rx_buf:         resb 600
 dhcp_tx_buf:         resb 600
+dhcp_eth_frame:      resb 600
 ip_buf:              resb 20
 
 section .data
@@ -107,14 +114,26 @@ str_dhcp_nak:        db '  [!] DHCP NAK recebido do servidor',0
 section .text
 
 ; ==========================================
-; 🔧 CONFIGURAÇÃO DE MAC E RESET DO CLIENTE
-; Entrada: rdi = ponteiro para 6 bytes do MAC
+; 🔧 CONFIGURAÇÃO DE MAC, RESET E IP ESTÁTICO
 ; ==========================================
 dhcp_definir_mac:
     mov     eax, [rdi]
     mov     [rel dhcp_mac_local], eax
     mov     ax, [rdi + 4]
     mov     [rel dhcp_mac_local + 4], ax
+    ret
+
+; Garante que dhcp_mac_local tenha o MAC real da NIC (mac_addr) se ainda estiver zerado
+dhcp_sincronizar_mac_nic:
+    mov     eax, [rel dhcp_mac_local]
+    or      ax, [rel dhcp_mac_local + 4]
+    jnz     .ok
+
+    mov     eax, [rel mac_addr]
+    mov     [rel dhcp_mac_local], eax
+    mov     ax, [rel mac_addr + 4]
+    mov     [rel dhcp_mac_local + 4], ax
+.ok:
     ret
 
 dhcp_cliente_resetar:
@@ -127,6 +146,113 @@ dhcp_cliente_resetar:
     mov     dword [rel dhcp_dns], 0
     ret
 
+; Chamado pelo botão [Aplicar IP Fixo] da UI (exec.c)
+; Entrada: edi = IP (big-endian host, ex: 0x0A000219 = 10.0.2.25)
+;          esi = Máscara (ex: 0xFFFFFF00)
+;          edx = Gateway (ex: 0x0A000202)
+dhcp_definir_ip_estatico:
+    push    rbp
+    mov     rbp, rsp
+    and     rsp, -16
+
+    mov     [rel dhcp_ip_atual], edi
+    mov     [rel dhcp_mascara], esi
+    mov     [rel dhcp_gateway], edx
+    mov     [rel dhcp_dns], edx
+    mov     dword [rel dhcp_estado], DHCP_ST_BOUND
+
+    ; Propaga para meu_ip, mascara_rede, gateway_ip e strings do rede.asm
+    call    rede_definir_ip_estatico
+
+    mov     rax, 1
+    mov     rsp, rbp
+    pop     rbp
+    ret
+
+; ==========================================
+; 📦 ENCAPSULAR BOOTP (300B) EM ETHERNET + IPv4 + UDP E TRANSMITIR
+; Entrada: esi = porta origem (68 cliente / 67 servidor)
+;          edx = porta destino (67 servidor / 68 cliente)
+; ==========================================
+dhcp_enviar_frame:
+    push    rbx
+    push    r12
+    push    r13
+
+    mov     r12d, esi               ; porta origem
+    mov     r13d, edx               ; porta destino
+    call    dhcp_sincronizar_mac_nic
+
+    lea     rdi, [rel dhcp_eth_frame]
+
+    ; 1. Cabeçalho Ethernet (14 bytes) - Broadcast FF:FF:FF:FF:FF:FF
+    mov     dword [rdi + 0], 0xFFFFFFFF
+    mov     word  [rdi + 4], 0xFFFF
+    mov     eax, [rel dhcp_mac_local]
+    mov     [rdi + 6], eax
+    mov     ax, [rel dhcp_mac_local + 4]
+    mov     [rdi + 10], ax
+    mov     word  [rdi + 12], 0x0008 ; EtherType IPv4 (0x0800 big-endian)
+
+    ; 2. Cabeçalho IPv4 (20 bytes -> offset 14..33)
+    lea     rbx, [rdi + 14]
+    mov     byte  [rbx + 0], 0x45   ; Version 4, IHL 5
+    mov     byte  [rbx + 1], 0x00   ; DSCP/ECN
+    mov     word  [rbx + 2], 0x4801 ; Total Length = 328 (0x0148 em big-endian)
+    mov     word  [rbx + 4], 0x0100 ; Identification
+    mov     word  [rbx + 6], 0x0000 ; Flags / Fragment Offset
+    mov     byte  [rbx + 8], 64     ; TTL = 64
+    mov     byte  [rbx + 9], 17     ; Protocol = UDP (17)
+    mov     word  [rbx + 10], 0     ; Checksum inicial = 0
+    mov     dword [rbx + 12], 0x00000000 ; Src IP: 0.0.0.0
+    mov     dword [rbx + 16], 0xFFFFFFFF ; Dst IP: 255.255.255.255
+
+    ; Calcula checksum do cabeçalho IPv4 (10 words)
+    xor     ecx, ecx
+    xor     edx, edx
+.ip_csum:
+    movzx   eax, word [rbx + rdx]
+    add     ecx, eax
+    add     edx, 2
+    cmp     edx, 20
+    jl      .ip_csum
+    mov     eax, ecx
+    shr     eax, 16
+    and     ecx, 0xFFFF
+    add     ecx, eax
+    mov     eax, ecx
+    shr     eax, 16
+    add     ecx, eax
+    not     cx
+    mov     [rbx + 10], cx
+
+    ; 3. Cabeçalho UDP (8 bytes -> offset 34..41)
+    lea     rbx, [rdi + 34]
+    mov     eax, r12d
+    xchg    al, ah
+    mov     [rbx + 0], ax           ; Source Port (big-endian)
+    mov     eax, r13d
+    xchg    al, ah
+    mov     [rbx + 2], ax           ; Dest Port (big-endian)
+    mov     word  [rbx + 4], 0x3401 ; UDP Length = 308 (0x0134 em big-endian)
+    mov     word  [rbx + 6], 0x0000 ; Checksum UDP opcional (0 em IPv4)
+
+    ; 4. Copia payload BOOTP/DHCP (300 bytes -> offset 42..341)
+    lea     rsi, [rel dhcp_tx_buf]
+    lea     rdi, [rel dhcp_eth_frame + 42]
+    mov     rcx, DHCP_PKT_TAM / 4
+    rep     movsd
+
+    ; 5. Envia frame Ethernet completo pela E1000
+    lea     rdi, [rel dhcp_eth_frame]
+    mov     rsi, DHCP_FRAME_TAM
+    call    tx_pacote
+
+    pop     r13
+    pop     r12
+    pop     rbx
+    ret
+
 ; ==========================================
 ; 🔍 AUXILIAR: BUSCAR OPÇÃO DHCP NO PACOTE RX
 ; Entrada: rsi = início das opções (dhcp_rx_buf + 240)
@@ -134,7 +260,7 @@ dhcp_cliente_resetar:
 ; Saída:   rax = ponteiro para o registro da opção (ou 0 se não achar)
 ; ==========================================
 dhcp_buscar_opcao:
-    lea     rcx, [rel dhcp_rx_buf + 596]
+    lea     rcx, [rel dhcp_rx_buf + 585]
 .loop:
     cmp     rsi, rcx
     jae     .nao_encontrado
@@ -152,8 +278,8 @@ dhcp_buscar_opcao:
     cmp     al, dl
     je      .achou
 
-    movzx   eax, byte [rsi + 1]     ; len da opção
-    lea     rsi, [rsi + rax + 2]    ; avança code(1) + len(1) + data(len)
+    movzx   eax, byte [rsi + 1]
+    lea     rsi, [rsi + rax + 2]
     jmp     .loop
 
 .achou:
@@ -202,7 +328,6 @@ dhcp_servidor_processar:
     test    rax, rax
     jz      .fim
 
-    ; Valida BOOTP Request + Magic Cookie
     cmp     byte [rel dhcp_rx_buf], BOOTP_OP_REQUEST
     jne     .fim
     cmp     dword [rel dhcp_rx_buf + 236], DHCP_MAGIC_COOKIE
@@ -253,8 +378,9 @@ dhcp_servidor_processar:
 
     lea     rsi, [rel str_dhcp_atribuido]
     call    print_string
-    mov     edi, r9d
-    lea     rsi, [rel ip_buf]
+    mov     eax, r9d
+    bswap   eax
+    lea     rdi, [rel ip_buf]
     call    ip_para_string
     lea     rsi, [rel ip_buf]
     call    print_string
@@ -353,41 +479,34 @@ buscar_ip_por_mac:
 montar_resposta:
     push    rbx
     push    rbp
-    mov     ebx, esi                ; Tipo (OFFER / ACK)
-    mov     ebp, edi                ; IP atribuído
+    mov     ebx, esi
+    mov     ebp, edi
 
-    ; 1. Zera buffer TX
     lea     rdi, [rel dhcp_tx_buf]
     mov     rcx, 600 / 8
     xor     rax, rax
     rep     stosq
 
-    ; 2. Cabeçalho BOOTP Reply
     lea     rdi, [rel dhcp_tx_buf]
     mov     byte [rdi + 0], BOOTP_OP_REPLY
     mov     byte [rdi + 1], BOOTP_HTYPE_ETH
     mov     byte [rdi + 2], BOOTP_HLEN_ETH
 
-    ; 3. XID e Flags do cliente
     mov     eax, [rel dhcp_rx_buf + 4]
     mov     [rdi + 4], eax
     mov     ax, [rel dhcp_rx_buf + 10]
     mov     [rdi + 10], ax
 
-    ; 4. yiaddr e siaddr
     mov     [rdi + 16], ebp
     mov     dword [rdi + 20], SERVIDOR_IP
 
-    ; 5. chaddr (Offset 28, 16 bytes)
     lea     rsi, [rel dhcp_rx_buf + 28]
     lea     rdi, [rel dhcp_tx_buf + 28]
     mov     rcx, 16
     rep     movsb
 
-    ; 6. Magic Cookie
     mov     dword [rel dhcp_tx_buf + 236], DHCP_MAGIC_COOKIE
 
-    ; 7. Opções DHCP
     lea     rdi, [rel dhcp_tx_buf + 240]
 
     mov     byte [rdi + 0], DHCP_OPT_MSGTYPE
@@ -422,9 +541,9 @@ montar_resposta:
 
     mov     byte [rdi], DHCP_OPT_END
 
-    lea     rdi, [rel dhcp_tx_buf]
-    mov     rsi, DHCP_PKT_TAM
-    call    tx_pacote
+    mov     esi, DHCP_SERVER_PORT
+    mov     edx, DHCP_CLIENT_PORT
+    call    dhcp_enviar_frame
 
     pop     rbp
     pop     rbx
@@ -465,11 +584,14 @@ dhcp_cliente_iniciar:
     mov     rbp, rsp
     and     rsp, -16
 
-    ; Permite reiniciar se estiver IDLE ou já BOUND
     cmp     dword [rel dhcp_estado], DHCP_ST_DISCOVER
     je      .fim
     cmp     dword [rel dhcp_estado], DHCP_ST_REQUEST
     je      .fim
+
+    ; Garante que a placa E1000 esteja inicializada antes de enviar Discover
+    call    inicializar_nic_mmio
+    call    dhcp_sincronizar_mac_nic
 
     mov     dword [rel dhcp_estado], DHCP_ST_DISCOVER
     mov     dword [rel dhcp_ip_ofertado], 0
@@ -481,13 +603,13 @@ dhcp_cliente_iniciar:
 
     rdtsc
     xor     eax, edx
-    or      eax, 0x46590000         ; Garante XID não-nulo
+    or      eax, 0x46590000
     mov     [rel dhcp_xid], eax
 
     call    montar_discover
-    lea     rdi, [rel dhcp_tx_buf]
-    mov     rsi, DHCP_PKT_TAM
-    call    tx_pacote
+    mov     esi, DHCP_CLIENT_PORT
+    mov     edx, DHCP_SERVER_PORT
+    call    dhcp_enviar_frame
 
 .fim:
     mov     rax, 1
@@ -513,7 +635,6 @@ dhcp_cliente_processar:
     test    rax, rax
     jz      .fim
 
-    ; Valida BOOTP Reply, XID da sessão e Magic Cookie
     cmp     byte [rel dhcp_rx_buf], BOOTP_OP_REPLY
     jne     .fim
     mov     eax, [rel dhcp_rx_buf + 4]
@@ -541,13 +662,11 @@ dhcp_cliente_processar:
     cmp     dword [rel dhcp_estado], DHCP_ST_DISCOVER
     jne     .fim
 
-    ; Captura yiaddr ofertado
     mov     eax, [rel dhcp_rx_buf + 16]
     test    eax, eax
     jz      .fim
     mov     [rel dhcp_ip_ofertado], eax
 
-    ; Captura Server Identifier (Opção 54) ou fallback para siaddr
     lea     rsi, [rel dhcp_rx_buf + 240]
     mov     dl, DHCP_OPT_SERVERID
     call    dhcp_buscar_opcao
@@ -562,13 +681,12 @@ dhcp_cliente_processar:
 
     mov     dword [rel dhcp_estado], DHCP_ST_REQUEST
     call    montar_request
-    lea     rdi, [rel dhcp_tx_buf]
-    mov     rsi, DHCP_PKT_TAM
-    call    tx_pacote
+    mov     esi, DHCP_CLIENT_PORT
+    mov     edx, DHCP_SERVER_PORT
+    call    dhcp_enviar_frame
     jmp     .fim
 
 .tratar_confirmacao:
-    ; Salva IP definitivo (yiaddr)
     mov     eax, [rel dhcp_rx_buf + 16]
     test    eax, eax
     jnz     .ip_ok
@@ -576,7 +694,6 @@ dhcp_cliente_processar:
 .ip_ok:
     mov     [rel dhcp_ip_atual], eax
 
-    ; Extrai Máscara (Opção 1)
     lea     rsi, [rel dhcp_rx_buf + 240]
     mov     dl, DHCP_OPT_SUBNET
     call    dhcp_buscar_opcao
@@ -586,7 +703,6 @@ dhcp_cliente_processar:
     mov     [rel dhcp_mascara], eax
 
 .busca_gw:
-    ; Extrai Gateway (Opção 3)
     lea     rsi, [rel dhcp_rx_buf + 240]
     mov     dl, DHCP_OPT_GATEWAY
     call    dhcp_buscar_opcao
@@ -596,7 +712,6 @@ dhcp_cliente_processar:
     mov     [rel dhcp_gateway], eax
 
 .busca_dns:
-    ; Extrai DNS (Opção 6)
     lea     rsi, [rel dhcp_rx_buf + 240]
     mov     dl, DHCP_OPT_DNS
     call    dhcp_buscar_opcao
@@ -608,9 +723,20 @@ dhcp_cliente_processar:
 .concluido:
     mov     dword [rel dhcp_estado], DHCP_ST_BOUND
 
+    ; Converte IP, Máscara e Gateway (network byte order -> big-endian host)
+    ; e atualiza meu_ip, str_ip, str_mask e str_gw diretamente no rede.asm
+    mov     edi, [rel dhcp_ip_atual]
+    bswap   edi
+    mov     esi, [rel dhcp_mascara]
+    bswap   esi
+    mov     edx, [rel dhcp_gateway]
+    bswap   edx
+    call    rede_definir_ip_estatico
+
     lea     rsi, [rel str_dhcp_pegou_ip]
     call    print_string
     mov     edi, [rel dhcp_ip_atual]
+    bswap   edi
     lea     rsi, [rel ip_buf]
     call    ip_para_string
     lea     rsi, [rel ip_buf]
@@ -633,6 +759,8 @@ dhcp_cliente_processar:
 ; 📦 CONSTRUTORES DE PACOTES DO CLIENTE
 ; ==========================================
 dhcp_preencher_base_cliente:
+    call    dhcp_sincronizar_mac_nic
+
     lea     rdi, [rel dhcp_tx_buf]
     mov     rcx, 600 / 8
     xor     rax, rax
@@ -647,7 +775,6 @@ dhcp_preencher_base_cliente:
     mov     [rdi + 4], eax
     mov     word [rdi + 10], DHCP_FLAG_BROADCAST
 
-    ; Grava MAC local em chaddr (offset 28)
     mov     eax, [rel dhcp_mac_local]
     mov     [rdi + 28], eax
     mov     ax, [rel dhcp_mac_local + 4]
@@ -665,7 +792,6 @@ montar_discover:
     mov     byte [rdi + 2], DHCP_DISCOVER
     add     rdi, 3
 
-    ; Lista de parâmetros solicitados (Subnet, Router, DNS)
     mov     byte [rdi + 0], DHCP_OPT_PARAM_LIST
     mov     byte [rdi + 1], 3
     mov     byte [rdi + 2], DHCP_OPT_SUBNET
@@ -685,14 +811,12 @@ montar_request:
     mov     byte [rdi + 2], DHCP_REQUEST
     add     rdi, 3
 
-    ; Opção 50: Requested IP Address
     mov     byte [rdi + 0], DHCP_OPT_REQ_IP
     mov     byte [rdi + 1], 4
     mov     eax, [rel dhcp_ip_ofertado]
     mov     [rdi + 2], eax
     add     rdi, 6
 
-    ; Opção 54: DHCP Server Identifier
     mov     eax, [rel dhcp_servidor_remoto]
     test    eax, eax
     jz      .param_list
