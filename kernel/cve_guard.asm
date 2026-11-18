@@ -17,7 +17,7 @@ global cve_guard_obter_regra
 global cve_guard_zerar_alertas
 
 ; Funcoes externas do Kernel C (fydlog.c)
-extern fydlog_registrar
+extern fydlog_escrever
 
 section .data
 msg_guard_iniciado:  db '[CVE-GUARD] Interceptacao de memoria e syscalls ativa', 0
@@ -52,9 +52,10 @@ cve_guard_iniciar:
     mov     qword [total_alertas], 0
     mov     byte [guard_ativo], 1
 
-    ; Registra no log interno do kernel (1o arg em RDI)
-    lea     rdi, [rel msg_guard_iniciado]
-    call    fydlog_registrar
+    ; Registra no log interno do kernel: fydlog_escrever(nivel, msg)
+    mov     rdi, 0                          ; Nivel INFO (ajuste se LOG_INFO tiver outro valor em fydlog.h)
+    lea     rsi, [rel msg_guard_iniciado]
+    call    fydlog_escrever
 
     pop     rbp
     ret
@@ -255,8 +256,9 @@ cve_guard_inspecionar_comando:
 
 .ameaca_detectada:
     inc     qword [total_alertas]
-    lea     rdi, [rel msg_alerta]
-    call    fydlog_registrar
+    mov     rdi, 3                          ; Nivel CRITICO/ERRO
+    lea     rsi, [rel msg_alerta]
+    call    fydlog_escrever
     mov     rax, 1
     jmp     .fim_insp
 
