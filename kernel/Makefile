@@ -92,7 +92,7 @@ OBJS = \
     panic.o \
     estrutura.o \
     energia.o \
-    cve_guard \
+    cve_guard.o \
     ../pentest/pentest.o \
     ../drivers/pci.o \
     ../drivers/particao.o \
