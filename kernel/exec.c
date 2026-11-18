@@ -1130,6 +1130,165 @@ void gui_texto(int x, int y, const char *str, uint32_t cor) {
     gpu_escrever_texto(str, x, y, cor);
 }
 
+/* ============================================================================
+- POPUP DE REDE CABEADA (ETH0 - IP FIXO / DHCP)
+- ============================================================================ */
+#define ETH_POP_W 296
+#define ETH_POP_H 256
+
+static int  eth_popup_aberto = 0;
+static int  eth_campo_ativo  = 0; /* 0 = IP, 1 = Mascara, 2 = Gateway */
+static char eth_ip_str[20]   = "10.0.2.15";
+static char eth_mask_str[20] = "255.255.255.0";
+static char eth_gw_str[20]   = "10.0.2.2";
+static char eth_status_msg[44] = "Modo: DHCP Automatico";
+
+extern void dhcp_cliente_resetar(void);
+
+static void eth_copiar_str(char *dst, const char *src, int max) {
+    int i = 0;
+    while (src && src[i] && i < max - 1) {
+        dst[i] = src[i];
+        i++;
+    }
+    dst[i] = '\0';
+}
+
+static int eth_str_len(const char *s) {
+    int n = 0;
+    while (s[n]) n++;
+    return n;
+}
+
+static void eth_popup_alternar(void) {
+    eth_popup_aberto = !eth_popup_aberto;
+    if (eth_popup_aberto) {
+        wifi_popup_aberto = 0;
+    }
+}
+
+static void eth_popup_desenhar(void) {
+    if (!eth_popup_aberto) return;
+
+    int px = (int)fb_largura - ETH_POP_W - 14;
+    int py = (int)fb_altura - ETH_POP_H - 38;
+    if (px < 10) px = 10;
+    if (py < 10) py = 10;
+
+    gui_retangulo(px, py, ETH_POP_W, ETH_POP_H, WIFI_COR_FUNDO);
+    gui_borda(px, py, ETH_POP_W, ETH_POP_H, WIFI_COR_CIANO);
+    gui_retangulo(px + 2, py + 2, ETH_POP_W - 4, 24, WIFI_COR_BARRA);
+    gui_texto(px + 10, py + 6, "Rede Cabeada (eth0 - E1000)", WIFI_COR_CIANO);
+
+    /* Botao [X] */
+    gui_retangulo(px + ETH_POP_W - 22, py + 4, 18, 18, WIFI_COR_VERMELHO);
+    gui_texto(px + ETH_POP_W - 17, py + 5, "X", WIFI_COR_TEXTO);
+
+    const char *labels[3] = { "Endereco IP:", "Mascara Rede:", "Gateway:" };
+    char *campos[3] = { eth_ip_str, eth_mask_str, eth_gw_str };
+
+    int cy = py + 34;
+    for (int i = 0; i < 3; i++) {
+        gui_texto(px + 12, cy, labels[i], WIFI_COR_SUAVE);
+        cy += 16;
+
+        int box_x = px + 12;
+        int box_w = ETH_POP_W - 24;
+        gui_retangulo(box_x, cy, box_w, 22, WIFI_COR_ITEM);
+        gui_borda(box_x, cy, box_w, 22, (eth_campo_ativo == i) ? WIFI_COR_CIANO : 0xFF4C2889);
+        gui_texto(box_x + 8, cy + 4, campos[i], WIFI_COR_TEXTO);
+
+        if (eth_campo_ativo == i) {
+            int len = eth_str_len(campos[i]);
+            gui_texto(box_x + 8 + (len * 8), cy + 4, "_", WIFI_COR_CIANO);
+        }
+        cy += 28;
+    }
+
+    /* Botao [Aplicar IP Fixo] */
+    int btn_y = py + 196;
+    gui_retangulo(px + 12, btn_y, 144, 24, WIFI_COR_ITEM_SEL);
+    gui_borda(px + 12, btn_y, 144, 24, WIFI_COR_VERDE);
+    gui_texto(px + 20, btn_y + 4, "Aplicar IP Fixo", WIFI_COR_VERDE);
+
+    /* Botao [Usar DHCP] */
+    gui_retangulo(px + 164, btn_y, 120, 24, WIFI_COR_ITEM_SEL);
+    gui_borda(px + 164, btn_y, 120, 24, WIFI_COR_CIANO);
+    gui_texto(px + 184, btn_y + 4, "Usar DHCP", WIFI_COR_CIANO);
+
+    /* Barra de status */
+    gui_retangulo(px + 2, py + ETH_POP_H - 22, ETH_POP_W - 4, 20, WIFI_COR_BARRA);
+    gui_texto(px + 10, py + ETH_POP_H - 18, eth_status_msg, WIFI_COR_VERDE);
+}
+
+static int eth_popup_processar_clique(int mx, int my) {
+    if (!eth_popup_aberto) return 0;
+
+    int px = (int)fb_largura - ETH_POP_W - 14;
+    int py = (int)fb_altura - ETH_POP_H - 38;
+    if (px < 10) px = 10;
+    if (py < 10) py = 10;
+
+    if (mx < px || mx > px + ETH_POP_W || my < py || my > py + ETH_POP_H) {
+        eth_popup_aberto = 0;
+        return 0;
+    }
+
+    int rx = mx - px;
+    int ry = my - py;
+
+    /* Fechar [X] */
+    if (rx >= ETH_POP_W - 22 && rx <= ETH_POP_W - 4 && ry >= 4 && ry <= 22) {
+        eth_popup_aberto = 0;
+        return 1;
+    }
+
+    /* Selecao dos 3 campos de texto */
+    int cy = 50;
+    for (int i = 0; i < 3; i++) {
+        if (rx >= 12 && rx <= ETH_POP_W - 12 && ry >= cy && ry <= cy + 22) {
+            eth_campo_ativo = i;
+            return 1;
+        }
+        cy += 44;
+    }
+
+    /* Botao [Aplicar IP Fixo] */
+    if (rx >= 12 && rx <= 156 && ry >= 196 && ry <= 220) {
+        eth_copiar_str(eth_status_msg, "IP Fixo: ", sizeof(eth_status_msg));
+        int p = eth_str_len(eth_status_msg);
+        eth_copiar_str(eth_status_msg + p, eth_ip_str, sizeof(eth_status_msg) - p);
+        return 1;
+    }
+
+    /* Botao [Usar DHCP] */
+    if (rx >= 164 && rx <= 284 && ry >= 196 && ry <= 220) {
+        dhcp_cliente_resetar();
+        dhcp_cliente_iniciar();
+        eth_copiar_str(eth_status_msg, "DHCP solicitado na eth0", sizeof(eth_status_msg));
+        return 1;
+    }
+
+    return 1;
+}
+
+static void eth_popup_on_key(char tecla) {
+    char *alvo = (eth_campo_ativo == 0) ? eth_ip_str :
+                 (eth_campo_ativo == 1) ? eth_mask_str : eth_gw_str;
+    int len = eth_str_len(alvo);
+
+    if (tecla == 27) {
+        eth_popup_aberto = 0;
+    } else if (tecla == '\t' || tecla == '\n') {
+        eth_campo_ativo = (eth_campo_ativo + 1) % 3;
+    } else if (tecla == '\b') {
+        if (len > 0) alvo[len - 1] = '\0';
+    } else if (((tecla >= '0' && tecla <= '9') || tecla == '.') && len < 15) {
+        alvo[len] = tecla;
+        alvo[len + 1] = '\0';
+    }
+}
+
 // Bloco Wifi
 static void wifi_copiar_str(char *dst, const char *src, int max) {
     int i = 0;
@@ -1687,6 +1846,7 @@ static int exibir_desktop_grafico(int L, int A) {
             }
 
             wifi_popup_desenhar();
+            eth_popup_desenhar();
 
             backbuffer_apresentar_frame(L, A);
             cursor_desenhar_novo();
@@ -1945,10 +2105,17 @@ static int exibir_desktop_grafico(int L, int A) {
                 precisa_redesenhar = 1;
             }
             else if (ponto_no_retangulo(mx, my, tray_x, btn_f_y, SYSTRAY_LARGURA, 32)) {
+                int eth_ico_x  = tray_x + 8;
                 int wifi_ico_x = tray_x + 34;
-                if (ponto_no_retangulo(mx, my, wifi_ico_x - 2, btn_f_y, 26, 32)) {
+
+                if (ponto_no_retangulo(mx, my, eth_ico_x - 2, btn_f_y, 26, 32)) {
+                    eth_popup_alternar();
+                } else if (ponto_no_retangulo(mx, my, wifi_ico_x - 2, btn_f_y, 26, 32)) {
+                    eth_popup_aberto = 0;
                     wifi_popup_alternar();
                 } else {
+                    eth_popup_aberto = 0;
+                    wifi_popup_aberto = 0;
                     modo_janela = MODO_JANELA_CONFIG;
                     janela_aberta = 1;
                 }
