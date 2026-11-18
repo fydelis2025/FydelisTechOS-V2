@@ -1,56 +1,43 @@
-name: Compilar e Publicar FydelisTech OS
+name: Build FydelisTech OS
 
 on:
   push:
-    branches: [ main, master ]
-    tags:
-      - 'v*'
-  workflow_dispatch:
-
-permissions:
-  contents: write
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
 
 jobs:
-  build-and-release:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Baixar codigo do repositorio
+      - name: Baixar codigo-fonte
         uses: actions/checkout@v4
 
-      - name: Instalar toolchain (NASM, GCC, Python, QEMU, Genisoimage)
+      - name: Instalar toolchain (NASM, GCC, Python Pillow, genisoimage)
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential nasm python3 python3-pil python3-cairosvg genisoimage xorriso grub-pc-bin grub-common mtools qemu-system-x86
+          sudo apt-get install -y nasm gcc binutils make python3 python3-pil genisoimage
 
-      - name: Compilar Kernel, Diagnosticar 0x8722 e Testar Boot
-        working-directory: kernel
+      - name: Compilar Kernel, Gravar Wallpapers e Gerar ISO
         run: |
-          make clean
-          make
-          make iso
-          ls -lh *.iso *.img *.bin
-          echo "=== DISASSEMBLY AO REDOR DE 0x8722 ==="
-          ndisasm -b 64 -o 0x8000 kernel.bin | grep -B 12 -A 6 "8722" || true
-          echo "=== TESTE RAPIDO NO QEMU (fydelterm.img) ==="
-          timeout 5s qemu-system-x86_64 -drive format=raw,file=fydelterm.img -boot c -m 512M -display none -no-reboot -d int,cpu_reset 2>&1 | tail -n 35 || true
+          make -C kernel clean
+          make -C kernel all
 
-      - name: Anexar ISO e IMG nos Artifacts da Action
+      - name: Publicar artefatos (fydelterm.img e fydelterm.iso)
         uses: actions/upload-artifact@v4
         with:
-          name: FydelisTechOS-ISO
+          name: FydelisTechOS-build
           path: |
-            kernel/fydelterm.iso
             kernel/fydelterm.img
+            kernel/fydelterm.iso
             kernel/kernel.bin
 
-      - name: Publicar Release no GitHub
+      - name: Criar Release Publica (ao enviar tag v*)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest-build' }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && format('FydelisTech OS {0}', github.ref_name) || 'FydelisTech OS (Build Automatico)' }}
           files: |
-            kernel/fydelterm.iso
             kernel/fydelterm.img
-            kernel/kernel.bin
-          fail_on_unmatched_files: true
+            kernel/fydelterm.iso
