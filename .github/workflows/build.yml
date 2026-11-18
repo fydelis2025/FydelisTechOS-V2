@@ -15,6 +15,12 @@ jobs:
       - name: Baixar codigo-fonte
         uses: actions/checkout@v4
 
+      - name: Verificar estrutura de pastas e includes
+        run: |
+          pwd
+          ls -la
+          ls -la include/syscalls/ || ls -la src/include/syscalls/ || true
+
       - name: Instalar toolchain (NASM, GCC, Python Pillow, CairoSVG, genisoimage)
         run: |
           sudo apt-get update
