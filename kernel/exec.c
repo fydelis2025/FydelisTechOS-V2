@@ -31,6 +31,50 @@
 #define COR_TEXTO_SUAVE     0xFFCBD5E1
 #define COR_BORDA_SUTIL     0xFF4C2889
 
+/* ============================================================================
+ * INTEGRAÇÃO DRIVER WI-FI & DHCP (Símbolos exportados pelo Assembly/Drivers)
+ * ============================================================================ */
+#define MAX_REDES_WIFI 32
+
+typedef struct __attribute__((packed)) {
+    char    ssid[8];          /* Offset 0: Nome da rede (ajuste se o struct real for maior) */
+    uint8_t seguranca;        /* Offset 8: 0 = Aberta, 1 = WPA2 */
+} WifiRede;
+
+extern WifiRede wifi_scan_lista[MAX_REDES_WIFI];
+
+extern int      wifi_detectar_placa(void);
+extern int      wifi_inicializar(void);
+extern int      sys_wifi_scan(void);
+extern int      sys_wifi_conectar(const char *ssid);
+extern void     sys_wifi_desconectar(void);
+extern uint64_t wifi_ler_status(void);
+extern void     dhcp_cliente_iniciar(void);
+
+/* ============================================================================
+ * POPUP DE REDES WI-FI (SYSTRAY ICON)
+ * ============================================================================ */
+#define WIFI_POP_W          280
+#define WIFI_POP_H          260
+#define WIFI_MAX_VISIVEIS   6
+
+/* Paleta Cyberpunk Purple & Neon */
+#define WIFI_COR_FUNDO      0xFF1A0B36
+#define WIFI_COR_BARRA      0xFF281352
+#define WIFI_COR_ITEM       0xFF120726
+#define WIFI_COR_ITEM_SEL   0xFF3B1D75
+#define WIFI_COR_BORDA      0xFF9D4EDD
+#define WIFI_COR_CIANO      0xFF00F5D4
+#define WIFI_COR_VERDE      0xFF00FF9C
+#define WIFI_COR_AMARELO    0xFFFFD166
+#define WIFI_COR_VERMELHO   0xFFFF4D6D
+#define WIFI_COR_TEXTO      0xFFF8FAFC
+#define WIFI_COR_SUAVE      0xFF94A3B8
+
+static int  wifi_popup_aberto = 0;
+static int  wifi_indice_selecionado = -1;
+static char wifi_status_msg[48] = "Pronto para escanear";
+
 /* Variáveis exportadas pelo driver VESA (vesafb.asm) */
 extern uint32_t *fb_base;
 extern uint32_t  fb_largura;
@@ -226,6 +270,7 @@ static const uint8_t fonte_8x16[95][16] = {
     {0x00,0x00,0x70,0x18,0x18,0x18,0x0E,0x18,0x18,0x18,0x70,0x00,0x00,0x00,0x00,0x00}, /* 125 '}' */
     {0x00,0x00,0x76,0xDC,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}  /* 126 '~' */
 };
+
 
 /* ============================================================================
 - PRIMITIVAS DE HARDWARE (PS/2, CMOS RTC & UTILITÁRIOS)
@@ -723,6 +768,7 @@ static void desenhar_widgets_sistema(int L, const TelemetriaSistema *tel) {
                        cx, cy, COR_TEXTO_SUAVE);
 }
 
+
 /* ============================================================================
 - SYSTEM TRAY
 - ============================================================================ */
@@ -1072,6 +1118,160 @@ void gui_texto(int x, int y, const char *str, uint32_t cor) {
     gpu_escrever_texto(str, x, y, cor);
 }
 
+// Bloco Wifi
+static void wifi_copiar_str(char *dst, const char *src, int max) {
+    int i = 0;
+    while (src && src[i] && i < max - 1) {
+        dst[i] = src[i];
+        i++;
+    }
+    dst[i] = '\0';
+}
+
+/* Alterna abertura do popup ao clicar no ícone do Systray */
+void wifi_popup_alternar(void) {
+    wifi_popup_aberto = !wifi_popup_aberto;
+    if (wifi_popup_aberto) {
+        if (!wifi_detectar_placa()) {
+            wifi_copiar_str(wifi_status_msg, "Placa Wi-Fi nao detectada", sizeof(wifi_status_msg));
+            return;
+        }
+        wifi_inicializar();
+        sys_wifi_scan();
+        wifi_copiar_str(wifi_status_msg, "Redes atualizadas", sizeof(wifi_status_msg));
+    }
+}
+
+/* Renderiza o popup acima da barra de tarefas no canto direito */
+void wifi_popup_desenhar(void) {
+    if (!wifi_popup_aberto) return;
+
+    int px = (int)fb_largura - WIFI_POP_W - 14;
+    int py = (int)fb_altura - WIFI_POP_H - 38; /* Acima da barra inferior */
+    if (px < 10) px = 10;
+    if (py < 10) py = 10;
+
+    /* Moldura principal e cabeçalho */
+    gui_retangulo(px, py, WIFI_POP_W, WIFI_POP_H, WIFI_COR_FUNDO);
+    gui_borda(px, py, WIFI_POP_W, WIFI_POP_H, WIFI_COR_BORDA);
+    gui_retangulo(px + 2, py + 2, WIFI_POP_W - 4, 24, WIFI_COR_BARRA);
+    gui_texto(px + 10, py + 6, "Wi-Fi FydelisNet", WIFI_COR_CIANO);
+
+    /* Botão [X] fechar */
+    gui_retangulo(px + WIFI_POP_W - 22, py + 4, 18, 18, WIFI_COR_VERMELHO);
+    gui_texto(px + WIFI_POP_W - 17, py + 5, "X", WIFI_COR_TEXTO);
+
+    /* Botão [Escanear] */
+    gui_retangulo(px + 10, py + 32, 92, 22, WIFI_COR_ITEM_SEL);
+    gui_borda(px + 10, py + 32, 92, 22, WIFI_COR_CIANO);
+    gui_texto(px + 20, py + 36, "Escanear", WIFI_COR_CIANO);
+
+    /* Botão [Desconectar] */
+    gui_retangulo(px + WIFI_POP_W - 112, py + 32, 102, 22, WIFI_COR_ITEM_SEL);
+    gui_borda(px + WIFI_POP_W - 112, py + 32, 102, 22, WIFI_COR_AMARELO);
+    gui_texto(px + WIFI_POP_W - 104, py + 36, "Desconectar", WIFI_COR_AMARELO);
+
+    /* Lista de redes encontradas */
+    int ly = py + 62;
+    int exibidas = 0;
+
+    for (int i = 0; i < MAX_REDES_WIFI && exibidas < WIFI_MAX_VISIVEIS; i++) {
+        if (wifi_scan_lista[i].ssid[0] == '\0') continue;
+
+        uint32_t bg = (i == wifi_indice_selecionado) ? WIFI_COR_ITEM_SEL : WIFI_COR_ITEM;
+        gui_retangulo(px + 10, ly, WIFI_POP_W - 20, 24, bg);
+        gui_borda(px + 10, ly, WIFI_POP_W - 20, 24, 0xFF4C2889);
+
+        /* Nome da rede (SSID) */
+        gui_texto(px + 16, ly + 5, wifi_scan_lista[i].ssid, WIFI_COR_TEXTO);
+
+        /* Tipo de segurança à direita */
+        if (wifi_scan_lista[i].seguranca == 0) {
+            gui_texto(px + WIFI_POP_W - 72, ly + 5, "Aberta", WIFI_COR_VERDE);
+        } else {
+            gui_texto(px + WIFI_POP_W - 60, ly + 5, "WPA2", WIFI_COR_AMARELO);
+        }
+
+        ly += 27;
+        exibidas++;
+    }
+
+    if (exibidas == 0) {
+        gui_texto(px + 16, py + 80, "Nenhuma rede Wi-Fi encontrada.", WIFI_COR_SUAVE);
+    }
+
+    /* Barra de status inferior do popup */
+    gui_retangulo(px + 2, py + WIFI_POP_H - 22, WIFI_POP_W - 4, 20, WIFI_COR_BARRA);
+    gui_texto(px + 10, py + WIFI_POP_H - 18, wifi_status_msg, WIFI_COR_VERDE);
+}
+
+/* Trata cliques dentro do popup (retorna 1 se consumiu o clique, 0 caso contrário) */
+int wifi_popup_processar_clique(int mx, int my) {
+    if (!wifi_popup_aberto) return 0;
+
+    int px = (int)fb_largura - WIFI_POP_W - 14;
+    int py = (int)fb_altura - WIFI_POP_H - 38;
+    if (px < 10) px = 10;
+    if (py < 10) py = 10;
+
+    /* Se clicou fora do popup, fecha automaticamente */
+    if (mx < px || mx > px + WIFI_POP_W || my < py || my > py + WIFI_POP_H) {
+        wifi_popup_aberto = 0;
+        return 0;
+    }
+
+    int rx = mx - px;
+    int ry = my - py;
+
+    /* Clique no [X] */
+    if (rx >= WIFI_POP_W - 22 && rx <= WIFI_POP_W - 4 && ry >= 4 && ry <= 22) {
+        wifi_popup_aberto = 0;
+        return 1;
+    }
+
+    /* Clique em [Escanear] */
+    if (rx >= 10 && rx <= 102 && ry >= 32 && ry <= 54) {
+        if (wifi_detectar_placa()) {
+            wifi_inicializar();
+            sys_wifi_scan();
+            wifi_copiar_str(wifi_status_msg, "Escaneamento concluido", sizeof(wifi_status_msg));
+        } else {
+            wifi_copiar_str(wifi_status_msg, "Sem placa Wi-Fi PCI", sizeof(wifi_status_msg));
+        }
+        return 1;
+    }
+
+    /* Clique em [Desconectar] */
+    if (rx >= WIFI_POP_W - 112 && rx <= WIFI_POP_W - 10 && ry >= 32 && ry <= 54) {
+        sys_wifi_desconectar();
+        wifi_indice_selecionado = -1;
+        wifi_copiar_str(wifi_status_msg, "Desconectado", sizeof(wifi_status_msg));
+        return 1;
+    }
+
+    /* Clique em uma rede da lista para conectar */
+    int ly = 62;
+    int exibidas = 0;
+    for (int i = 0; i < MAX_REDES_WIFI && exibidas < WIFI_MAX_VISIVEIS; i++) {
+        if (wifi_scan_lista[i].ssid[0] == '\0') continue;
+
+        if (rx >= 10 && rx <= WIFI_POP_W - 10 && ry >= ly && ry <= ly + 24) {
+            wifi_indice_selecionado = i;
+            if (sys_wifi_conectar(wifi_scan_lista[i].ssid)) {
+                dhcp_cliente_iniciar();
+                wifi_copiar_str(wifi_status_msg, "Conectado via DHCP!", sizeof(wifi_status_msg));
+            } else {
+                wifi_copiar_str(wifi_status_msg, "Falha ao conectar na rede", sizeof(wifi_status_msg));
+            }
+            return 1;
+        }
+        ly += 27;
+        exibidas++;
+    }
+
+    return 1;
+}
+
 /* ============================================================================
 - MENU INICIAR ORGANIZADO POR CATEGORIA
 - ============================================================================ */
@@ -1325,7 +1525,7 @@ static int exibir_desktop_grafico(int L, int A) {
             /* 2. Painel Superior */
             desenhar_retangulo_solido(0, 0, L, 32, COR_PAINEL);
             desenhar_retangulo_solido(0, 32, L, 2, COR_ROXO_NEON);
-            gpu_escrever_titulo("FYDELISTECH OS", 14, 4, COR_CIANO_NEON);
+            gpu_escrever_titulo("FYDELISTECHOS", 14, 4, COR_CIANO_NEON);
             gpu_escrever_texto("Sessao: admin@fydelis", L - 196, 8, COR_VERDE_NEON);
 
             /* 3. Atalhos Rapidos na Area de Trabalho */
@@ -1373,7 +1573,7 @@ static int exibir_desktop_grafico(int L, int A) {
                 int cy = win_y + 46;
 
                 if (modo_janela == MODO_JANELA_SISTEMA) {
-                    gpu_escrever_texto("Bem-vindo ao FydelisTech OS (64-bit Long Mode)!", cx, cy, COR_CIANO_NEON);
+                    gpu_escrever_texto("Bem-vindo ao FydelisTechOS (64-bit Long Mode)!", cx, cy, COR_CIANO_NEON);
                     cy += 26;
                     gpu_escrever_texto("Arquitetura   : x86_64 Assembly + C Freestanding", cx, cy, COR_TEXTO_SUAVE);
                     cy += 22;
@@ -1473,6 +1673,8 @@ static int exibir_desktop_grafico(int L, int A) {
                 desenhar_menu_iniciar_categorizado(menu_x, menu_y, menu_w, menu_h, mx, my);
             }
 
+            wifi_popup_desenhar();
+
             backbuffer_apresentar_frame(L, A);
             cursor_desenhar_novo();
 
@@ -1552,7 +1754,10 @@ static int exibir_desktop_grafico(int L, int A) {
             int term_btn_x = L - SYSTRAY_LARGURA - term_btn_w - 16;
             int tray_x     = L - SYSTRAY_LARGURA - 8;
 
-            if (ponto_no_retangulo(mx, my, btn_f_x, btn_f_y, btn_f_w, btn_f_h)) {
+            if (wifi_popup_aberto && wifi_popup_processar_clique(mx, my)) {
+                precisa_redesenhar = 1;
+            }
+            else if (ponto_no_retangulo(mx, my, btn_f_x, btn_f_y, btn_f_w, btn_f_h)) {
                 menu_aberto = !menu_aberto;
                 precisa_redesenhar = 1;
             }
@@ -1646,8 +1851,13 @@ static int exibir_desktop_grafico(int L, int A) {
                 precisa_redesenhar = 1;
             }
             else if (ponto_no_retangulo(mx, my, tray_x, btn_f_y, SYSTRAY_LARGURA, 32)) {
-                modo_janela = MODO_JANELA_CONFIG;
-                janela_aberta = 1;
+                int wifi_ico_x = tray_x + 34;
+                if (ponto_no_retangulo(mx, my, wifi_ico_x - 2, btn_f_y, 26, 32)) {
+                    wifi_popup_alternar();
+                } else {
+                    modo_janela = MODO_JANELA_CONFIG;
+                    janela_aberta = 1;
+                }
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
