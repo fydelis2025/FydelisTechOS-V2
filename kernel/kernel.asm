@@ -1,6 +1,6 @@
 ; ======================================
 ; Kernel FydelisTech OS - v4.2 COMPLETO (CORRIGIDO)
-; Transicao 16/32/64-bit + VESA + BSS Zero + GDT/IDT + PIC Mask + Deteccao Real
+; Transicao 16/32/64-bit + VESA + BSS Zero + GDT/IDT + PIC Mask + Deteccao Real + CVE Guard
 ; Salvador - Bahia
 ; ======================================
 DEFAULT REL
@@ -39,9 +39,6 @@ extern inicializar_nic_mmio
 
 extern hosts_inicializar
 extern fydlog_inicializar
-
-;extern pci_init
-;extern usb_scan_controllers
 
 extern cve_guard_iniciar
 extern cve_guard_adicionar_regra
@@ -383,12 +380,17 @@ start:
 
 .montar_estrutura:
     ; ======================================
-    ; FASE 4 - ESTRUTURA DE DIRETORIOS (/fyd)
+    ; FASE 4 - ESTRUTURA DE DIRETORIOS (/fyd) & SEGURANCA
     ; ======================================
     call    construir_estrutura_sistema
     call    hosts_inicializar
     call    fydlog_inicializar
-    ; Inicializa o CVE Guard e carrega assinaturas base
+
+    ; Inicializa o CVE Guard e carrega assinaturas base (com alinhamento ABI 16B)
+    push    rbp
+    mov     rbp, rsp
+    and     rsp, -16
+
     call    cve_guard_iniciar
 
     lea     rdi, [rel cve_id_1]
@@ -410,6 +412,9 @@ start:
     lea     rsi, [rel cve_pad_4]
     lea     rdx, [rel cve_msg_4]
     call    cve_guard_adicionar_regra
+
+    mov     rsp, rbp
+    pop     rbp
 
     ; ======================================
     ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
@@ -591,9 +596,15 @@ main_loop:
     cmp     dword [buf_head], 0
     je      main_loop
 
-    ; Inspeciona o comando contra as regras do CVE Guard
+    ; Inspeciona o comando contra as regras do CVE Guard (alinhado 16B)
+    push    rbp
+    mov     rbp, rsp
+    and     rsp, -16
     lea     rdi, [rel buffer]
     call    cve_guard_inspecionar_comando
+    mov     rsp, rbp
+    pop     rbp
+
     cmp     rax, 1
     je      .comando_bloqueado
 
@@ -739,37 +750,56 @@ paging_init:
 ; MENSAGENS
 ; ======================================
 section .rodata
-msg_cabecalho:   db '+------------------------------------------------------------+',10
-                 db '|          FYDELISTECH OS - Sistema Operacional do Zero      |',10
-                 db '|                    v4.2 - Salvador - Bahia                 |',10
-                 db '+------------------------------------------------------------+',10,10,0
+msg_cabecalho:     db '+------------------------------------------------------------+',10
+                   db '|          FYDELISTECH OS - Sistema Operacional do Zero      |',10
+                   db '|                    v4.2 - Salvador - Bahia                 |',10
+                   db '+------------------------------------------------------------+',10,10,0
 
-msg_fase_cpu:    db '  [*] Verificando processador...',0
-msg_fase_mem:    db '  [*] Inicializando memoria...',0
-msg_fase_disco:  db '  [*] Detectando armazenamento...',0
-msg_fase_hw:     db '  [*] Inicializando Audio, Bluetooth e Rede E1000...',0
-msg_hw_ok:       db ' OK',10,0
-msg_fase_gpu:    db '  [*] Preparando interface...',0
+msg_fase_cpu:      db '  [*] Verificando processador...',0
+msg_fase_mem:      db '  [*] Inicializando memoria...',0
+msg_fase_disco:    db '  [*] Detectando armazenamento...',0
+msg_fase_hw:       db '  [*] Inicializando Audio, Bluetooth e Rede E1000...',0
+msg_hw_ok:         db ' OK',10,0
+msg_fase_gpu:      db '  [*] Preparando interface...',0
 
-msg_cpu_info:    db '  [OK] Processador: ',0
-msg_mem_total:   db '  [OK] Memoria Total: ',0
-msg_mem_livre:   db '  [OK] Memoria Livre: ',0
-msg_disco_info:  db '  [OK] Disco: ',0
-msg_disco_modelo:db '  [OK] Modelo: ',0
-msg_disco_tam:   db '  [OK] Tamanho Total: ',0
-msg_gb_sufixo:   db ' GB',10,0
-msg_mb_sufixo:   db ' MB',10,0
-msg_sep:         db ' / ',0
+msg_cpu_info:      db '  [OK] Processador: ',0
+msg_mem_total:     db '  [OK] Memoria Total: ',0
+msg_mem_livre:     db '  [OK] Memoria Livre: ',0
+msg_disco_info:    db '  [OK] Disco: ',0
+msg_disco_modelo:  db '  [OK] Modelo: ',0
+msg_disco_tam:     db '  [OK] Tamanho Total: ',0
+msg_gb_sufixo:     db ' GB',10,0
+msg_mb_sufixo:     db ' MB',10,0
+msg_sep:           db ' / ',0
 
-msg_opcoes:      db 10,'  Escolha:',10
-                 db '    [1] Terminal FydelTerm',10
-                 db '    [2] Area de Trabalho Grafica',10,10,'  -> ',0
-msg_prompt:      db 'fydelterm> ',0
-msg_sem_disco:   db '  [!] Disco nao detectado',10,0
-msg_cpu_erro:    db '  [X] CPU incompativel',10,0
+msg_opcoes:        db 10,'  Escolha:',10
+                   db '    [1] Terminal FydelTerm',10
+                   db '    [2] Area de Trabalho Grafica',10,10,'  -> ',0
+msg_prompt:        db 'fydelterm> ',0
+msg_sem_disco:     db '  [!] Disco nao detectado',10,0
+msg_cpu_erro:      db '  [X] CPU incompativel',10,0
 
-msg_carregando:  db 'Enviando para framebuffer...',10,0
-msg_encerrado:   db 'Sessao grafica encerrada.',10,0
+msg_carregando:    db 'Enviando para framebuffer...',10,0
+msg_encerrado:     db 'Sessao grafica encerrada.',10,0
+
+; Assinaturas iniciais e alerta do CVE Guard
+msg_cve_bloqueado: db '  [CVE-GUARD] Execucao bloqueada: assinatura maliciosa detectada!',10,0
+
+cve_id_1:          db 'CVE-2024-3094',0
+cve_pad_1:         db '*xz-backdoor*',0
+cve_msg_1:         db 'Payload backdoor XZ comprometido',0
+
+cve_id_2:          db 'CVE-2021-44228',0
+cve_pad_2:         db '*jndi:ldap*',0
+cve_msg_2:         db 'Tentativa de exploracao Log4Shell',0
+
+cve_id_3:          db 'FYD-MEM-001',0
+cve_pad_3:         db '*0x90909090*',0
+cve_msg_3:         db 'Deteccao de NOP sled em memoria',0
+
+cve_id_4:          db 'FYD-SYS-002',0
+cve_pad_4:         db '*rm -rf /*',0
+cve_msg_4:         db 'Comando destrutivo bloqueado',0
 
 ; ======================================
 ; DADOS
