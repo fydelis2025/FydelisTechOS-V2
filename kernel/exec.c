@@ -37,8 +37,12 @@
 #define MAX_REDES_WIFI 32
 
 typedef struct __attribute__((packed)) {
-    char    ssid[8];          /* Offset 0: Nome da rede (ajuste se o struct real for maior) */
-    uint8_t seguranca;        /* Offset 8: 0 = Aberta, 1 = WPA2 */
+    char    ssid[33];         /* Offset 0..32 */
+    uint8_t canal;            /* Offset 33 */
+    uint8_t potencia;         /* Offset 34 */
+    uint8_t seguranca;        /* Offset 35: 0 = Aberta, 1 = WPA2 */
+    uint8_t bssid[6];         /* Offset 36..41 */
+    uint8_t reservado[22];    /* Offset 42..63 -> Total = 64 bytes */
 } WifiRede;
 
 extern WifiRede wifi_scan_lista[MAX_REDES_WIFI];
