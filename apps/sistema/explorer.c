@@ -1,5 +1,6 @@
 #include "../apps.h"
 #include "../../include/fyd_formatos.h"
+#include "../../include/icones.h"
 #include <stdint.h>
 #include <stddef.h>
 
