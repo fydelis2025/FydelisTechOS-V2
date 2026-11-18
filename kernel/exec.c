@@ -6,7 +6,7 @@
 #include "../apps/apps.h"
 #include "../include/fyd_formatos.h"
 #include "../include/fydlog.h"
-#include "gpu.h"
+#include "syscalls/gpu.h"
 #include "icones.h"
 #include "fontes_ui.h"
 #include "fydelis_core.h"
