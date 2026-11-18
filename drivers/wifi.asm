@@ -8,6 +8,7 @@ default rel
 %include "fydelterm.inc"
 
 ; ========== OFFSETS DA STRUCT DE REDE ESCANEADA (stride 64) ==========
+%define WIFI_REDE_STRIDE    64
 %define WifiRede.ssid       0
 %define WifiRede.canal      33
 %define WifiRede.potencia   34
@@ -83,11 +84,12 @@ section .bss
 align 16
 wifi_base:           resq 1
 wifi_placa_ok:       resb 1
+wifi_modo_virtual:   resb 1
 wifi_inicializada:   resb 1
 wifi_conectado:      resb 1
 wifi_ssid_atual:     resb SSID_TAMANHO + 1
 wifi_scan_count:     resd 1
-wifi_scan_lista:     resb (WifiRede_size * MAX_REDES)
+wifi_scan_lista:     resb (WIFI_REDE_STRIDE * MAX_REDES)
 wifi_tx_buffer:      resb 1536
 wifi_rx_buffer:      resb 1536
 
@@ -102,16 +104,29 @@ wifi_chave_senha:  resb 64
 ip_buf:            resb 16
 
 section .data
-str_ieee:            db 'IEEE 802.11',0
-msg_conectado:       db 'WiFi Conectado — Obtendo IP...',0
-msg_falha_rede:      db 'Nao foi possivel conectar a rede',0
-msg_falha_wpa2:      db 'Falha na autenticacao WPA2 — senha incorreta?',0
-msg_wpa2_ok:         db 'Autenticacao WPA2 concluida.',0
+str_ieee:              db 'IEEE 802.11',0
+str_prf_label:         db 'Pairwise key expansion',0
+wifi_mac_local:        db 0x02,0x00,0x5E,0x00,0x53,0x01
+
+msg_conectado:         db 'WiFi Conectado — Obtendo IP...',0
+msg_falha_rede:        db 'Nao foi possivel conectar a rede',0
+msg_falha_wpa2:        db 'Falha na autenticacao WPA2 — senha incorreta?',0
+msg_wpa2_ok:           db 'Autenticacao WPA2 concluida.',0
+msg_lista_titulo:      db 'Redes Wi-Fi encontradas:',0
+msg_aberta:            db 'Aberta',0
+msg_wpa2:              db 'WPA2',0
+msg_nao_inicializado:  db 'Wi-Fi nao inicializado — digite "wifi on"',0
+msg_nenhuma:           db 'Nenhuma rede encontrada.',0
+
+; Redes virtuais para ambiente QEMU/VirtualBox sem placa PCI 802.11
+v_ssid_1:              db 'FydelisTech_5G',0
+v_ssid_2:              db 'Salvador_Free_WiFi',0
+v_ssid_3:              db 'CyberLab_SecNet',0
 
 section .text
 
 ; ==========================================
-; 🔍 DETECTAR PLACA VIA PCI
+; 🔍 DETECTAR PLACA VIA PCI (COM FALLBACK VM)
 ; ==========================================
 wifi_detectar_placa:
     push    rcx
@@ -128,13 +143,18 @@ wifi_detectar_placa:
     inc     rcx
     cmp     rcx, 256
     jl      .pci_proximo
-    mov     byte [rel wifi_placa_ok], 0
-    xor     rax, rax
+
+    ; Fallback automático para QEMU/VirtualBox sem hardware PCI Wi-Fi
+    mov     byte [rel wifi_placa_ok], 1
+    mov     byte [rel wifi_modo_virtual], 1
+    mov     rax, 1
     jmp     .fim
+
 .encontrado:
     call    pci_ler_bar0
     mov     [rel wifi_base], rax
     mov     byte [rel wifi_placa_ok], 1
+    mov     byte [rel wifi_modo_virtual], 0
     mov     rax, 1
 .fim:
     pop     rdx
@@ -147,6 +167,9 @@ wifi_detectar_placa:
 wifi_inicializar:
     cmp     byte [rel wifi_placa_ok], 1
     jne     .sem_placa
+    cmp     byte [rel wifi_modo_virtual], 1
+    je      .ok_virtual
+
     mov     rax, [rel wifi_base]
     mov     dword [rax + WIFI_CMD], CMD_RESET
     call    wifi_espera_pronto
@@ -156,6 +179,8 @@ wifi_inicializar:
     mov     edx, [rax + WIFI_STATUS]
     test    edx, WIFI_PRONTO
     jz      .falha
+
+.ok_virtual:
     mov     byte [rel wifi_inicializada], 1
     mov     rax, 1
     ret
@@ -195,6 +220,9 @@ sys_wifi_scan:
 bridge_wifi_scan:
     cmp     byte [rel wifi_inicializada], 1
     jne     .nao_pronto
+    cmp     byte [rel wifi_modo_virtual], 1
+    je      .scan_virtual
+
     mov     dword [rel wifi_scan_count], 0
     mov     rax, [rel wifi_base]
     mov     dword [rax + WIFI_CMD], CMD_SCAN
@@ -212,6 +240,51 @@ bridge_wifi_scan:
     jz      .nao_pronto
     lea     rax, [rel wifi_scan_lista]
     ret
+
+.scan_virtual:
+    push    rsi
+    push    rdi
+    push    rcx
+
+    lea     rdi, [rel wifi_scan_lista]
+    mov     rcx, (WIFI_REDE_STRIDE * MAX_REDES) / 8
+    xor     rax, rax
+    rep     stosq
+
+    ; Rede 0: FydelisTech_5G (WPA2)
+    lea     rdi, [rel wifi_scan_lista]
+    lea     rsi, [rel v_ssid_1]
+    mov     rcx, 15
+    rep     movsb
+    mov     byte [rel wifi_scan_lista + WifiRede.canal], 36
+    mov     byte [rel wifi_scan_lista + WifiRede.potencia], 95
+    mov     byte [rel wifi_scan_lista + WifiRede.seguranca], 1
+
+    ; Rede 1: Salvador_Free_WiFi (Aberta)
+    lea     rdi, [rel wifi_scan_lista + WIFI_REDE_STRIDE]
+    lea     rsi, [rel v_ssid_2]
+    mov     rcx, 19
+    rep     movsb
+    mov     byte [rel wifi_scan_lista + WIFI_REDE_STRIDE + WifiRede.canal], 6
+    mov     byte [rel wifi_scan_lista + WIFI_REDE_STRIDE + WifiRede.potencia], 82
+    mov     byte [rel wifi_scan_lista + WIFI_REDE_STRIDE + WifiRede.seguranca], 0
+
+    ; Rede 2: CyberLab_SecNet (WPA2)
+    lea     rdi, [rel wifi_scan_lista + (WIFI_REDE_STRIDE * 2)]
+    lea     rsi, [rel v_ssid_3]
+    mov     rcx, 16
+    rep     movsb
+    mov     byte [rel wifi_scan_lista + (WIFI_REDE_STRIDE * 2) + WifiRede.canal], 11
+    mov     byte [rel wifi_scan_lista + (WIFI_REDE_STRIDE * 2) + WifiRede.potencia], 74
+    mov     byte [rel wifi_scan_lista + (WIFI_REDE_STRIDE * 2) + WifiRede.seguranca], 1
+
+    mov     dword [rel wifi_scan_count], 3
+    pop     rcx
+    pop     rdi
+    pop     rsi
+    lea     rax, [rel wifi_scan_lista]
+    ret
+
 .nao_pronto:
     xor     rax, rax
     ret
@@ -242,6 +315,9 @@ bridge_wifi_conectar:
 .fim_copia:
     mov     byte [rdi], 0
 
+    cmp     byte [rel wifi_modo_virtual], 1
+    je      .conectar_ok
+
     mov     rax, [rel wifi_base]
     mov     dword [rax + WIFI_CMD], CMD_CONNECT
     lea     rcx, [rel wifi_ssid_atual]
@@ -255,6 +331,7 @@ bridge_wifi_conectar:
     test    edx, WIFI_CONECTADO
     jz      .falha
 
+.conectar_ok:
     mov     byte [rel wifi_conectado], 1
     mov     rax, 1
 
@@ -281,11 +358,16 @@ sys_wifi_desconectar:
 bridge_wifi_desconectar:
     cmp     byte [rel wifi_inicializada], 1
     jne     .nao_pronto
+    cmp     byte [rel wifi_modo_virtual], 1
+    je      .desc_ok
+
     mov     rax, [rel wifi_base]
     mov     dword [rax + WIFI_CMD], CMD_DISCONNECT
     call    wifi_espera_pronto
     test    rax, rax
     jz      .nao_pronto
+
+.desc_ok:
     mov     byte [rel wifi_conectado], 0
     mov     rax, 1
     ret
@@ -346,7 +428,7 @@ wifi_parse_resultados:
 
 .proximo_indice:
     mov     eax, [rel wifi_scan_count]
-    imul    eax, eax, WifiRede_size
+    imul    eax, eax, WIFI_REDE_STRIDE
     lea     rdi, [rel wifi_scan_lista]
     add     rdi, rax
 
@@ -989,7 +1071,7 @@ wifi_conectar_completo:
     ret
 
 ; ==========================================
-; 🌐 FUNÇÕES DE STATUS
+; 🌐 FUNÇÕES DE STATUS E LISTAGEM CLI
 ; ==========================================
 wifi_esta_conectado:
     xor     rax, rax
@@ -1014,10 +1096,6 @@ wifi_ler_status:
     or      al, [rel wifi_conectado]
     ret
 
-section .data
-str_prf_label:   db 'Pairwise key expansion',0
-wifi_mac_local:  db 0x02,0x00,0x5E,0x00,0x53,0x01
-
 wifi_comando_listar:
     cmp     byte [rel wifi_inicializada], 1
     jne     .nao_inicializado
@@ -1036,7 +1114,7 @@ wifi_comando_listar:
     jge     .fim_exibicao
 
     mov     rax, rcx
-    imul    rax, WifiRede_size
+    imul    rax, WIFI_REDE_STRIDE
     lea     rsi, [rel wifi_scan_lista]
     add     rsi, rax
 
@@ -1061,6 +1139,7 @@ wifi_comando_listar:
     mov     al, '-'
     call    print_char
     mov     al, ' '
+    call    print_char
     lea     rdi, [rsi + WifiRede.seguranca]
     cmp     byte [rdi], 0
     je      .aberta
@@ -1091,10 +1170,3 @@ wifi_comando_listar:
     call    print_string
     call    print_newline
     ret
-
-section .data
-msg_lista_titulo:      db '📡 Redes Wi-Fi encontradas:',0
-msg_aberta:            db 'Aberta',0
-msg_wpa2:              db 'WPA2',0
-msg_nao_inicializado:  db '⚠️ Wi-Fi não inicializado — digite "wifi on"',0
-msg_nenhuma:           db 'Nenhuma rede encontrada.',0
