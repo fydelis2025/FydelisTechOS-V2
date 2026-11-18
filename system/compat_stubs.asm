@@ -17,11 +17,10 @@ extern arquivo_abrir, arquivo_ler_linha, arquivo_escrever_linha
 extern arquivo_existe, arquivo_criar
 
 global strcmpi, strcmp, strcpy, strlen
-global int_para_str, ip_para_string, print_formatado
+global int_para_str, print_formatado
 global rx_bytes_total, tx_bytes_total, dhcp_estado
 global usb_listar_dispositivos, dhcp_exec
 global arquivo_fechar, arquivo_ler_todo, obter_unidade_sistema
-global tx_pacote, rx_processa
 global fila_criar, fila_adicionar, fila_processar, fila_limpar
 global sys_usb_listar, sys_usb_enviar_dados, sys_usb_encontrar_dispositivo
 global sys_rede_enviar
@@ -161,74 +160,6 @@ int_para_str:
     pop     rbx
     ret
 
-; ---------- ip_para_string(rdi=buffer, eax=IP little-endian) ----------
-; Suporta corretamente octetos de 1, 2 e 3 digitos (ex: 192.168.1.100)
-ip_para_string:
-    push    rbx
-    push    rcx
-    push    rdx
-    push    rsi
-    push    r8
-
-    mov     rsi, rdi
-    mov     r8d, eax
-    mov     ecx, 4
-    mov     ebx, 10
-
-.byte_loop:
-    mov     eax, r8d
-    and     eax, 0xFF               ; Isola octeto atual (0..255)
-
-    cmp     eax, 100
-    jb      .menos_100
-    xor     edx, edx
-    div     ebx                     ; EAX = octeto / 10, EDX = unidade
-    push    rdx                     ; Salva unidade
-    xor     edx, edx
-    div     ebx                     ; EAX = centena, EDX = dezena
-    add     al, '0'
-    mov     [rsi], al
-    inc     rsi
-    add     dl, '0'
-    mov     [rsi], dl
-    inc     rsi
-    pop     rdx
-    jmp     .unidade
-
-.menos_100:
-    cmp     eax, 10
-    jb      .so_unidade
-    xor     edx, edx
-    div     ebx                     ; EAX = dezena, EDX = unidade
-    add     al, '0'
-    mov     [rsi], al
-    inc     rsi
-    jmp     .unidade
-
-.so_unidade:
-    mov     edx, eax
-
-.unidade:
-    add     dl, '0'
-    mov     [rsi], dl
-    inc     rsi
-
-    dec     ecx
-    jz      .fim
-    mov     byte [rsi], '.'
-    inc     rsi
-    shr     r8d, 8
-    jmp     .byte_loop
-
-.fim:
-    mov     byte [rsi], 0
-    pop     r8
-    pop     rsi
-    pop     rdx
-    pop     rcx
-    pop     rbx
-    ret
-
 ; ---------- print_formatado(rdi=string) ----------
 print_formatado:
     push    rsi
@@ -238,7 +169,7 @@ print_formatado:
     ret
 
 ; ============================================================================
-; REDE, DHCP & USB
+; USB & REDE STUBS (As funções reais de rede estão em rede_bridge.asm)
 ; ============================================================================
 
 usb_listar_dispositivos:
@@ -270,14 +201,6 @@ dhcp_exec:
 .falhou:
     xor     eax, eax
     pop     r12
-    ret
-
-tx_pacote:
-    xor     eax, eax
-    ret
-
-rx_processa:
-    xor     eax, eax
     ret
 
 sys_rede_enviar:
