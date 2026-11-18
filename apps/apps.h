@@ -32,4 +32,7 @@ typedef struct {
 extern FydelisApp app_calculadora;
 extern FydelisApp app_visualizador_logs;
 
+extern FydelisApp app_explorer;
+extern FydelisApp app_browser;
+
 #endif
