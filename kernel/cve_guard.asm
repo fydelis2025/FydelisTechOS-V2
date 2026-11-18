@@ -12,8 +12,11 @@ global cve_guard_verificar_padrao
 global cve_guard_adicionar_regra
 global cve_guard_inspecionar_comando
 global cve_guard_total_alertas
+global cve_guard_total_regras
+global cve_guard_obter_regra
+global cve_guard_zerar_alertas
 
-; Funcoes externas do Kernel C (stubs_kernel.c / texto.c / fydlog.c)
+; Funcoes externas do Kernel C (fydlog.c)
 extern fydlog_registrar
 
 section .data
@@ -269,7 +272,102 @@ cve_guard_inspecionar_comando:
 
 ; ======================================
 ; uint64_t cve_guard_total_alertas(void)
+; Retorna o total de bloqueios registrados
 ; ======================================
 cve_guard_total_alertas:
     mov     rax, [total_alertas]
+    ret
+
+; ======================================
+; void cve_guard_zerar_alertas(void)
+; Zera o contador de alertas bloqueados
+; ======================================
+cve_guard_zerar_alertas:
+    mov     qword [total_alertas], 0
+    ret
+
+; ======================================
+; uint64_t cve_guard_total_regras(void)
+; Retorna a quantidade de regras carregadas na tabela
+; ======================================
+cve_guard_total_regras:
+    mov     rax, [num_regras]
+    ret
+
+; ======================================
+; int cve_guard_obter_regra(uint64_t indice, char *out_id, char *out_padrao, char *out_msg)
+; ABI C: RDI = indice, RSI = buffer id (32B), RDX = buffer padrao (128B), RCX = buffer msg (256B)
+; Retorno: RAX = 1 (sucesso), 0 (indice invalido)
+; ======================================
+cve_guard_obter_regra:
+    push    rbx
+    push    r8
+    push    r9
+
+    cmp     rdi, [num_regras]
+    jge     .invalido
+
+    ; Calcula base da regra: tabela_regras + (indice * 448)
+    imul    rbx, rdi, tamanho_regra
+    lea     r8, [rel tabela_regras]
+    add     r8, rbx
+
+    ; 1. Copia ID (offset +0) -> RSI
+    test    rsi, rsi
+    jz      .pular_id
+    mov     r9, r8
+    mov     rbx, 32
+.cp_out_id:
+    mov     al, [r9]
+    mov     [rsi], al
+    test    al, al
+    jz      .pular_id
+    inc     r9
+    inc     rsi
+    dec     rbx
+    jnz     .cp_out_id
+.pular_id:
+
+    ; 2. Copia Padrao (offset +32) -> RDX
+    test    rdx, rdx
+    jz      .pular_pad
+    lea     r9, [r8 + 32]
+    mov     rbx, 128
+.cp_out_pad:
+    mov     al, [r9]
+    mov     [rdx], al
+    test    al, al
+    jz      .pular_pad
+    inc     r9
+    inc     rdx
+    dec     rbx
+    jnz     .cp_out_pad
+.pular_pad:
+
+    ; 3. Copia Mensagem (offset +192) -> RCX
+    test    rcx, rcx
+    jz      .sucesso
+    lea     r9, [r8 + 192]
+    mov     rbx, 256
+.cp_out_msg:
+    mov     al, [r9]
+    mov     [rcx], al
+    test    al, al
+    jz      .sucesso
+    inc     r9
+    inc     rcx
+    dec     rbx
+    jnz     .cp_out_msg
+
+.sucesso:
+    mov     rax, 1
+    jmp     .sair_obter
+
+.invalido:
+    xor     rax, rax
+
+.sair_obter:
+    pop     r9
+    pop     r8
+    pop     rbx
     ret
