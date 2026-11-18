@@ -1012,7 +1012,7 @@ static void exibir_tela_login(int L, int A) {
     ws_inicializar();
 
     /* Dispara o DHCP em segundo plano sem travar o boot da interface gráfica */
-    dhcp_cliente_iniciar();
+    //dhcp_cliente_iniciar();
 
     while (1) {
         if (precisa_redesenhar) {
