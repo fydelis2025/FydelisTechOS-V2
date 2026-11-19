@@ -110,13 +110,11 @@ virtio_inicializar:
     jz      .falha
 
 .configurar:
-    ; Garante que o Linear Framebuffer VESA ativo esteja válido
     mov     rax, [rel fb_base]
     test    rax, rax
     jz      .falha
     mov     [rel fb_virtio_endereco], rax
 
-    ; Sincroniza resolução e pitch reais do modo de vídeo ativo
     mov     eax, [rel fb_largura]
     test    eax, eax
     jz      .falha
@@ -166,7 +164,6 @@ virtio_preencher_retangulo:
     test    r10, r10
     jz      .fallback
 
-    ; Validação e Clipping nos limites da tela
     test    rdx, rdx
     jle     .concluido
     test    rcx, rcx
@@ -256,12 +253,12 @@ virtio_preencher_retangulo:
 virtio_copiar_blit:
     mov     r10, [rel fb_virtio_endereco]
     test    r10, r10
-    jnz     .inicia_blit
+    jnz     .blit_tem_fb
     mov     r10, [rel fb_base]
     test    r10, r10
     jz      .fim_blit
 
-.inicia_blit:
+.blit_tem_fb:
     test    r8, r8
     jle     .fim_blit
     test    r9, r9
@@ -270,19 +267,123 @@ virtio_copiar_blit:
     push    rbx
     push    rsi
     push    rdi
+    push    r11
     push    r12
     push    r13
+    push    r14
+    push    r15
+
+    ; Obtém largura e altura ativas
+    mov     r14d, [rel resolucao_largura]
+    test    r14d, r14d
+    jnz     .w_ok
+    mov     r14d, [rel fb_largura]
+.w_ok:
+    mov     r15d, [rel resolucao_altura]
+    test    r15d, r15d
+    jnz     .h_ok
+    mov     r15d, [rel fb_altura]
+.h_ok:
 
     mov     r11d, [rel virtio_pitch_bytes]
     test    r11d, r11d
     jnz     .pitch_ok
     mov     r11d, [rel fb_pitch]
-
 .pitch_ok:
+
+    ; Clipping src_x < 0
+    test    rdi, rdi
+    jns     .blit_src_y0
+    add     r8, rdi
+    sub     rdx, rdi
+    xor     rdi, rdi
+
+.blit_src_y0:
+    ; Clipping src_y < 0
+    test    rsi, rsi
+    jns     .blit_dst_x0
+    add     r9, rsi
+    sub     rcx, rsi
+    xor     rsi, rsi
+
+.blit_dst_x0:
+    ; Clipping dst_x < 0
+    test    rdx, rdx
+    jns     .blit_dst_y0
+    add     r8, rdx
+    sub     rdi, rdx
+    xor     rdx, rdx
+
+.blit_dst_y0:
+    ; Clipping dst_y < 0
+    test    rcx, rcx
+    jns     .blit_bounds_x
+    add     r9, rcx
+    sub     rsi, rcx
+    xor     rcx, rcx
+
+.blit_bounds_x:
+    test    rdi, rdi
+    js      .blit_pop_fim
+    test    rsi, rsi
+    js      .blit_pop_fim
+    test    rdx, rdx
+    js      .blit_pop_fim
+    test    rcx, rcx
+    js      .blit_pop_fim
+    test    r8, r8
+    jle     .blit_pop_fim
+    test    r9, r9
+    jle     .blit_pop_fim
+
+    ; Limita largura à borda direita (src_x e dst_x)
+    mov     rax, rdi
+    add     rax, r8
+    cmp     rax, r14
+    jbe     .blit_lim_dx
+    mov     r8, r14
+    sub     r8, rdi
+
+.blit_lim_dx:
+    mov     rax, rdx
+    add     rax, r8
+    cmp     rax, r14
+    jbe     .blit_check_w
+    mov     r8, r14
+    sub     r8, rdx
+
+.blit_check_w:
+    test    r8, r8
+    jle     .blit_pop_fim
+
+    ; Limita altura à borda inferior (src_y e dst_y)
+    mov     rax, rsi
+    add     rax, r9
+    cmp     rax, r15
+    jbe     .blit_lim_dy
+    mov     r9, r15
+    sub     r9, rsi
+
+.blit_lim_dy:
+    mov     rax, rcx
+    add     rax, r9
+    cmp     rax, r15
+    jbe     .blit_check_h
+    mov     r9, r15
+    sub     r9, rcx
+
+.blit_check_h:
+    test    r9, r9
+    jle     .blit_pop_fim
+
+    ; Decide sentido vertical: se dst_y > src_y, copia de baixo para cima
+    cmp     rcx, rsi
+    jg      .blit_reverso
+
     xor     r12, r12
 .loop_blit_y:
     cmp     r12, r9
-    jge     .fim_blit_pop
+    jge     .blit_pop_fim
 
     mov     rax, rsi
     add     rax, r12
@@ -310,9 +411,45 @@ virtio_copiar_blit:
     inc     r12
     jmp     .loop_blit_y
 
-.fim_blit_pop:
+.blit_reverso:
+    mov     r12, r9
+    dec     r12
+.loop_blit_rev_y:
+    cmp     r12, 0
+    jl      .blit_pop_fim
+
+    mov     rax, rsi
+    add     rax, r12
+    imul    rax, r11
+    lea     rbx, [r10 + rax]
+    lea     rbx, [rbx + rdi * 4]
+
+    mov     rax, rcx
+    add     rax, r12
+    imul    rax, r11
+    lea     r13, [r10 + rax]
+    lea     r13, [r13 + rdx * 4]
+
+    push    rsi
+    push    rdi
+    push    rcx
+    mov     rsi, rbx
+    mov     rdi, r13
+    mov     rcx, r8
+    rep     movsd
+    pop     rcx
+    pop     rdi
+    pop     rsi
+
+    dec     r12
+    jmp     .loop_blit_rev_y
+
+.blit_pop_fim:
+    pop     r15
+    pop     r14
     pop     r13
     pop     r12
+    pop     r11
     pop     rdi
     pop     rsi
     pop     rbx
