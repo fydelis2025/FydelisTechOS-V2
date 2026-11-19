@@ -1,366 +1,324 @@
-; ======================================
-; Módulo de Rede FydelTerm — Ponte Assembly ↔ C++
+; ============================================================================
+; REDE_CMD.ASM — Comandos de Rede Nativos (Bare-Metal Real · Sem C++/Qt)
 ; Comandos: ipconfig, wifi, ping, arp, netstat, traceroute
-; ======================================
+; FydelisTech OS v4.2 · Salvador - Bahia
+; ============================================================================
 BITS 64
+default rel
 %include "fydelterm.inc"
 
-; ✅ Funções externas — C++/Qt (System V AMD64: RDI, RSI, RDX, RCX, R8, R9)
+; Rotinas de Terminal
 extern print_string, print_newline, print_char, print_num
 extern argc, argv
-extern rede_ler_iface_nome
-extern rede_ler_mac, rede_ler_ip, rede_ler_mascara
-extern rede_ler_gateway, rede_ler_dns, rede_ler_status_link
-extern rede_ler_bytes_rx, rede_ler_bytes_tx
-extern rede_exec_ping, rede_ler_tabela_arp
-extern rede_ler_conexoes, rede_exec_traceroute
-extern rede_ler_wifi_disponiveis
-extern rede_conectar_wifi, rede_desconectar_wifi
-extern rede_ler_status_wifi
+
+; ============================================================================
+; PONTE REAL COM A PILHA DE REDE NATIVA DO KERNEL (net_core.asm / e1000 / rtl8139)
+; ============================================================================
+extern net_iface_nome           ; -> rax = ponteiro string (ex: "eth0 (e1000)")
+extern net_obter_mac_str        ; -> rax = ponteiro string MAC formatado
+extern net_obter_ip_str         ; -> rax = ponteiro string IPv4 atual
+extern net_obter_mascara_str    ; -> rax = ponteiro string Mascara
+extern net_obter_gateway_str    ; -> rax = ponteiro string Gateway
+extern net_obter_dns_str        ; -> rax = ponteiro string DNS
+extern net_link_ativo           ; -> rax = 1 link UP no hardware, 0 DOWN
+extern net_bytes_rx             ; -> rax = total de bytes recebidos pelo NIC
+extern net_bytes_tx             ; -> rax = total de bytes transmitidos pelo NIC
+extern net_dhcp_renovar         ; -> rax = 1 sucesso, 0 timeout DHCP
+extern net_ping_real            ; rdi = str IP/host -> rax = 1 respondeu, 0 perda
+extern net_arp_listar           ; -> imprime entradas reais do cache ARP do kernel
+extern net_conexoes_listar      ; -> imprime sockets/portas TCP/UDP ativos
+extern net_traceroute_real      ; rdi = str IP/host -> executa sondas TTL=1..30
 
 section .data
 align 16
-hdr_net:      db '=== Configuracao de Rede (FydelNet Core) ===',0
-hdr_wifi:     db '=== REDES WIRELESS DISPONIVEIS ===',0
-lbl_if:       db 'Interface: ',0
-lbl_mac:      db 'MAC:       ',0
-lbl_ip:       db 'IP:        ',0
-lbl_mask:     db 'Mascara:   ',0
-lbl_gw:       db 'Gateway:   ',0
-lbl_dns:      db 'DNS:       ',0
-lbl_up:       db 'Status:    CONECTADO ✅',0
-lbl_down:     db 'Status:    DESCONECTADO ❌',0
-hdr_stats:    db '=== Estatisticas de Transmissao ===',0
-lbl_rx:       db 'RX Recebido: ',0
-lbl_tx:       db 'TX Enviado:  ',0
-lbl_arp:      db '=== Tabela ARP ===',0
-lbl_conn:     db '=== Conexoes Ativas ===',0
-msg_ping_uso: db 'Uso: ping <host/ip>',0
-msg_tr_uso:   db 'Uso: traceroute <host/ip>',0
-msg_wifi_uso: db 'Uso: wifi list | wifi connect <nome> | wifi disconnect',0
-msg_aguarde:  db 'Aguarde...',0
-msg_sem_wifi: db 'Nenhuma interface WiFi detectada',0
-msg_conectou: db 'Conectado a rede: ',0
-msg_descon:   db 'Desconectado da rede WiFi',0
-tipo_cabo:    db 'Cabeada',0
-tipo_wifi:    db 'WiFi Sem Fio',0
-lbl_bytes:    db 'B',0
-lbl_kilo:     db 'K',0
-lbl_mega:     db 'M',0
-lbl_giga:     db 'G',0
+hdr_net:      db '=== Configuracao de Rede (FydelNet Real Hardware) ===', 0
+lbl_if:       db 'Interface: ', 0
+lbl_mac:      db 'MAC:       ', 0
+lbl_ip:       db 'IPv4:      ', 0
+lbl_mask:     db 'Mascara:   ', 0
+lbl_gw:       db 'Gateway:   ', 0
+lbl_dns:      db 'DNS:       ', 0
+lbl_up:       db 'Status:    [CONECTADO - LINK UP]', 0
+lbl_down:     db 'Status:    [DESCONECTADO - LINK DOWN]', 0
+hdr_stats:    db '=== Estatisticas Reais da Placa (NIC) ===', 0
+lbl_rx:       db 'RX Recebido: ', 0
+lbl_tx:       db 'TX Enviado:  ', 0
+lbl_arp:      db '=== Tabela ARP Real (Cache Kernel) ===', 0
+lbl_conn:     db '=== Sockets / Conexoes Ativas ===', 0
+msg_ping_uso: db 'Uso: ping <ip_ipv4>  (ex: ping 10.0.2.2)', 0
+msg_tr_uso:   db 'Uso: traceroute <ip_ipv4>', 0
+msg_dhcp_ok:  db '[OK] Configuracao IPv4 renovada via DHCP real.', 0
+msg_dhcp_err: db '[ERRO] Falha ao obter resposta do servidor DHCP.', 0
+msg_wifi_hw:  db '[INFO] Modo Bare-Metal: operando via NIC PCI Ethernet (eth0).', 0
+lbl_bytes:    db ' B', 0
+lbl_kilo:     db ' KB', 0
+lbl_mega:     db ' MB', 0
+lbl_giga:     db ' GB', 0
 
 section .text
 global do_ipconfig, do_wifi, do_ping, do_arp, do_netstat, do_traceroute
 
-; ==========================================
-; 📊 COMANDO: ipconfig
-; ==========================================
+; ============================================================================
+; COMANDO: ipconfig  (ou "ipconfig /renew" para disparar DHCP real)
+; ============================================================================
 do_ipconfig:
+    push    rbx
     push    rsi
+    push    rdi
     push    rax
 
-    mov     rsi, hdr_net
+    ; Verifica se foi passado argumento "/renew" ou "dhcp"
+    mov     rax, [rel argc]
+    cmp     rax, 2
+    jl      .exibir_info
+
+    lea     rbx, [rel argv]
+    mov     rdi, [rbx + 8]
+    cmp     byte [rdi], '/'
+    je      .renovar_dhcp
+    cmp     byte [rdi], 'd'
+    je      .renovar_dhcp
+    jmp     .exibir_info
+
+.renovar_dhcp:
+    call    net_dhcp_renovar
+    test    rax, rax
+    jz      .dhcp_falhou
+    lea     rsi, [rel msg_dhcp_ok]
+    call    print_string
+    call    print_newline
+    jmp     .exibir_info
+
+.dhcp_falhou:
+    lea     rsi, [rel msg_dhcp_err]
+    call    print_string
+    call    print_newline
+
+.exibir_info:
+    lea     rsi, [rel hdr_net]
     call    print_string
     call    print_newline
     call    print_newline
 
-    ; Nome da interface
-    mov     rsi, lbl_if
+    ; Interface PCI detectada
+    lea     rsi, [rel lbl_if]
     call    print_string
-    call    rede_ler_iface_nome
+    call    net_iface_nome
     mov     rsi, rax
     call    print_string
     call    print_newline
 
-    ; MAC
-    mov     rsi, lbl_mac
+    ; Endereco MAC real lido da EEPROM/MMIO da placa
+    lea     rsi, [rel lbl_mac]
     call    print_string
-    call    rede_ler_mac
+    call    net_obter_mac_str
     mov     rsi, rax
     call    print_string
     call    print_newline
 
-    ; IP
-    mov     rsi, lbl_ip
+    ; Endereco IPv4
+    lea     rsi, [rel lbl_ip]
     call    print_string
-    call    rede_ler_ip
+    call    net_obter_ip_str
     mov     rsi, rax
     call    print_string
     call    print_newline
 
-    ; Máscara
-    mov     rsi, lbl_mask
+    ; Mascara de sub-rede
+    lea     rsi, [rel lbl_mask]
     call    print_string
-    call    rede_ler_mascara
+    call    net_obter_mascara_str
     mov     rsi, rax
     call    print_string
     call    print_newline
 
-    ; Gateway
-    mov     rsi, lbl_gw
+    ; Gateway padrao
+    lea     rsi, [rel lbl_gw]
     call    print_string
-    call    rede_ler_gateway
+    call    net_obter_gateway_str
     mov     rsi, rax
     call    print_string
     call    print_newline
 
-    ; DNS
-    mov     rsi, lbl_dns
+    ; Servidor DNS
+    lea     rsi, [rel lbl_dns]
     call    print_string
-    call    rede_ler_dns
+    call    net_obter_dns_str
     mov     rsi, rax
     test    rsi, rsi
-    jz      .dns_ok
+    jz      .dns_fim
     call    print_string
-.dns_ok:
+.dns_fim:
     call    print_newline
     call    print_newline
 
-    ; Status
-    call    rede_ler_status_link
+    ; Estado fisico do Link (registrador STATUS do NIC)
+    call    net_link_ativo
     cmp     rax, 1
     je      .conectado
-    mov     rsi, lbl_down
+    lea     rsi, [rel lbl_down]
     jmp     .status_prn
 .conectado:
-    mov     rsi, lbl_up
+    lea     rsi, [rel lbl_up]
 .status_prn:
     call    print_string
     call    print_newline
     call    print_newline
 
-    ; Estatísticas
-    mov     rsi, hdr_stats
+    ; Contadores reais RX/TX
+    lea     rsi, [rel hdr_stats]
     call    print_string
     call    print_newline
 
-    mov     rsi, lbl_rx
+    lea     rsi, [rel lbl_rx]
     call    print_string
-    call    rede_ler_bytes_rx
+    call    net_bytes_rx
     call    print_tamanho
     call    print_newline
 
-    mov     rsi, lbl_tx
+    lea     rsi, [rel lbl_tx]
     call    print_string
-    call    rede_ler_bytes_tx
+    call    net_bytes_tx
     call    print_tamanho
     call    print_newline
 
     pop     rax
+    pop     rdi
     pop     rsi
+    pop     rbx
     ret
 
-; ==========================================
-; 📶 COMANDO: wifi
-; ==========================================
+; ============================================================================
+; COMANDO: wifi (informa status do barramento wireless / fallback Ethernet)
+; ============================================================================
 do_wifi:
     push    rsi
-    push    rdi
-    push    rax
-
-    mov     rax, [argc]
-    cmp     rax, 2
-    jl      .mostrar_uso
-
-    mov     rdi, [argv + 8]
-    cmp     byte [rdi], 'l'
-    je      .listar
-    cmp     byte [rdi], 'c'
-    je      .conectar
-    cmp     byte [rdi], 'd'
-    je      .desconectar
-
-.mostrar_uso:
-    mov     rsi, msg_wifi_uso
+    lea     rsi, [rel msg_wifi_hw]
     call    print_string
     call    print_newline
-    jmp     .fim
-
-.listar:
-    mov     rsi, hdr_wifi
-    call    print_string
-    call    print_newline
-    call    rede_ler_wifi_disponiveis
-    test    rax, rax
-    jz      .sem_wifi
-    mov     rcx, rax
-.lista_loop:
-    mov     rsi, [rcx]
-    test    rsi, rsi
-    jz      .lista_fim
-    call    print_string
-    call    print_newline
-    add     rcx, 8
-    jmp     .lista_loop
-.sem_wifi:
-    mov     rsi, msg_sem_wifi
-    call    print_string
-    call    print_newline
-.lista_fim:
-    jmp     .fim
-
-.conectar:
-    mov     rax, [argc]
-    cmp     rax, 3
-    jl      .mostrar_uso
-    mov     rsi, msg_aguarde
-    call    print_string
-    call    print_newline
-    mov     rdi, [argv + 16]
-    call    rede_conectar_wifi
-    mov     rsi, msg_conectou
-    call    print_string
-    mov     rsi, [argv + 16]
-    call    print_string
-    call    print_newline
-    jmp     .fim
-
-.desconectar:
-    call    rede_desconectar_wifi
-    mov     rsi, msg_descon
-    call    print_string
-    call    print_newline
-
-.fim:
-    pop     rax
-    pop     rdi
     pop     rsi
     ret
 
-; ==========================================
-; 🔔 COMANDO: ping
-; ==========================================
+; ============================================================================
+; COMANDO: ping <ip> (envia pacotes ICMP Echo Request reais pelo NIC)
+; ============================================================================
 do_ping:
+    push    rbx
     push    rsi
     push    rdi
     push    rax
 
-    mov     rax, [argc]
+    mov     rax, [rel argc]
     cmp     rax, 2
     jl      .uso
-    mov     rdi, [argv + 8]
-    call    rede_exec_ping
+
+    lea     rbx, [rel argv]
+    mov     rdi, [rbx + 8]
+    call    net_ping_real
     jmp     .fim
+
 .uso:
-    mov     rsi, msg_ping_uso
+    lea     rsi, [rel msg_ping_uso]
     call    print_string
     call    print_newline
+
 .fim:
     pop     rax
     pop     rdi
     pop     rsi
+    pop     rbx
     ret
 
-; ==========================================
-; 📋 COMANDO: arp
-; ==========================================
+; ============================================================================
+; COMANDO: arp (exibe tabela ARP real resolvida na rede local)
+; ============================================================================
 do_arp:
     push    rsi
-    push    rax
-
-    mov     rsi, lbl_arp
+    lea     rsi, [rel lbl_arp]
     call    print_string
     call    print_newline
-    call    rede_ler_tabela_arp
-    test    rax, rax
-    jz      .fim
-    mov     rcx, rax
-.loop:
-    mov     rsi, [rcx]
-    test    rsi, rsi
-    jz      .fim
-    call    print_string
-    call    print_newline
-    add     rcx, 8
-    jmp     .loop
-.fim:
-    pop     rax
+    call    net_arp_listar
+    pop     rsi
     ret
 
-; ==========================================
-; 🔌 COMANDO: netstat
-; ==========================================
+; ============================================================================
+; COMANDO: netstat (exibe sockets/portas reais da pilha TCP/UDP)
+; ============================================================================
 do_netstat:
     push    rsi
-    push    rax
-
-    mov     rsi, lbl_conn
+    lea     rsi, [rel lbl_conn]
     call    print_string
     call    print_newline
-    call    rede_ler_conexoes
-    test    rax, rax
-    jz      .fim
-    mov     rcx, rax
-.loop:
-    mov     rsi, [rcx]
-    test    rsi, rsi
-    jz      .fim
-    call    print_string
-    call    print_newline
-    add     rcx, 8
-    jmp     .loop
-.fim:
-    pop     rax
+    call    net_conexoes_listar
+    pop     rsi
     ret
 
-; ==========================================
-; 🗺️ COMANDO: traceroute
-; ==========================================
+; ============================================================================
+; COMANDO: traceroute <ip> (sondas ICMP/UDP com incremento de TTL)
+; ============================================================================
 do_traceroute:
+    push    rbx
     push    rsi
     push    rdi
     push    rax
 
-    mov     rax, [argc]
+    mov     rax, [rel argc]
     cmp     rax, 2
     jl      .uso
-    mov     rdi, [argv + 8]
-    call    rede_exec_traceroute
+
+    lea     rbx, [rel argv]
+    mov     rdi, [rbx + 8]
+    call    net_traceroute_real
     jmp     .fim
+
 .uso:
-    mov     rsi, msg_tr_uso
+    lea     rsi, [rel msg_tr_uso]
     call    print_string
     call    print_newline
+
 .fim:
     pop     rax
     pop     rdi
     pop     rsi
+    pop     rbx
     ret
 
-; ==========================================
-; 🧾 AUXILIAR: Formatar tamanho (B → KB → MB → GB)
-; ==========================================
+; ============================================================================
+; AUXILIAR: Formatar tamanho (B -> KB -> MB -> GB)
+; ============================================================================
 print_tamanho:
     push    rcx
     push    rdx
     push    rbx
+    push    rsi
 
     mov     rcx, 1024
-    mov     rbx, lbl_bytes      ; Ponteiro para string de unidade
+    lea     rbx, [rel lbl_bytes]
 
     cmp     rax, rcx
     jb      .imprimir
-    cqo
+    xor     edx, edx
     div     rcx
-    mov     rbx, lbl_kilo
+    lea     rbx, [rel lbl_kilo]
 
     cmp     rax, rcx
     jb      .imprimir
-    cqo
+    xor     edx, edx
     div     rcx
-    mov     rbx, lbl_mega
+    lea     rbx, [rel lbl_mega]
 
     cmp     rax, rcx
     jb      .imprimir
-    cqo
+    xor     edx, edx
     div     rcx
-    mov     rbx, lbl_giga
+    lea     rbx, [rel lbl_giga]
 
 .imprimir:
-    call    print_num          ; Imprime o número em RAX
+    call    print_num
     mov     rsi, rbx
-    call    print_string       ; Imprime unidade (B/K/M/G)
+    call    print_string
 
+    pop     rsi
     pop     rbx
     pop     rdx
     pop     rcx
