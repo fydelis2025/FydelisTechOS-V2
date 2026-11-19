@@ -1,8 +1,8 @@
-; ======================================
-; Kernel FydelisTech OS - v4.2 COMPLETO (CORRIGIDO)
-; Transicao 16/32/64-bit + VESA + BSS Zero + GDT/IDT + PIC Mask + Deteccao Real + CVE Guard
+; ============================================================================
+; Kernel FydelisTech OS - v4.2 COMPLETO (DUAL BOOT LEGACY/UEFI + SECURE BOOT)
+; Transicao 16/32/64-bit + VESA/GOP + BSS Zero + GDT/IDT + Rede Real + CVE Guard
 ; Salvador - Bahia
-; ======================================
+; ============================================================================
 DEFAULT REL
 %include "fydelterm.inc"
 
@@ -36,6 +36,7 @@ extern audio_init
 extern bt_detectar_placa
 extern bt_inicializar
 extern inicializar_nic_mmio
+extern net_inicializar
 
 extern hosts_inicializar
 extern fydlog_inicializar
@@ -46,47 +47,91 @@ extern cve_guard_inspecionar_comando
 
 global bytes_para_gb
 global _entry16
+global _entry64_uefi
 global start
+global boot_modo_atual
+global boot_secure_ativo
 
-; ======================================
+; ============================================================================
 ; CONSTANTES
-; ======================================
-PAGE_SIZE        equ 4096
-PAGE_2MB         equ 0x200000
-MB_MULT          equ 1048576        ; Bytes -> MB
-GB_MULT          equ 1073741824     ; Bytes -> GB
+; ============================================================================
+BOOTINFO_ADDR        equ 0x5000
+BOOTINFO_MAGIC       equ 0x46594442     ; "FYDB"
+BOOT_MODE_LEGACY     equ 1
+BOOT_MODE_UEFI       equ 2
 
-; ATA/IDE
-ATA_DATA         equ 0x1F0
-ATA_SECTORS      equ 0x1F2
-ATA_LBA_LO       equ 0x1F3
-ATA_LBA_MID      equ 0x1F4
-ATA_LBA_HI       equ 0x1F5
-ATA_CMD          equ 0x1F7
-ATA_CMD_READ     equ 0x20
-ATA_CMD_WRITE    equ 0x30
-ATA_CMD_IDENTIFY equ 0xEC
-ATA_STATUS_BSY   equ 0x80
-ATA_STATUS_RDY   equ 0x40
-ATA_STATUS_DRQ   equ 0x08
-ATA_STATUS_ERR   equ 0x01
-SETOR_TAMANHO    equ 512
+VBE_INFO_BUF         equ 0x6000         ; Buffer temporario VBE2 (nao colide com 0x5000!)
+VBE_MODE_BUF         equ 0x6200
+
+PAGE_SIZE            equ 4096
+PAGE_2MB             equ 0x200000
+MB_MULT              equ 1048576        ; Bytes -> MB
+GB_MULT              equ 1073741824     ; Bytes -> GB
 
 ; PALETA
-COR_FUNDO        equ 0xFF090611
-COR_ROXO_ESCURO  equ 0xFF2A1050
-COR_ROXO_NEON    equ 0xFF9D4EDD
-COR_CIANO_NEON   equ 0xFF00FFFF
-COR_CINZA_VIDRO  equ 0xFF3A2060
-COR_TEXTO        equ 0xFFF0E6FF
+COR_FUNDO            equ 0xFF090611
+COR_ROXO_ESCURO      equ 0xFF2A1050
+COR_ROXO_NEON        equ 0xFF9D4EDD
+COR_CIANO_NEON       equ 0xFF00FFFF
+COR_CINZA_VIDRO      equ 0xFF3A2060
+COR_TEXTO            equ 0xFFF0E6FF
 
-; ======================================
-; ESTAGIO DE TRANSICAO (16 -> 32 -> 64-BIT)
-; Fixado no inicio absoluto de .text (offset 0x8000)
-; ======================================
+; ============================================================================
+; VETOR DE ENTRADA DUAL NO TOPO DE .text._start (FIXADO EM 0x8000)
+;   - 0x8000 (_entry16):      Entrada 16-bit Real Mode (MBR Legacy BIOS)
+;   - 0x8010 (_entry64_uefi): Entrada 64-bit Long Mode (BOOTX64.EFI UEFI)
+; ============================================================================
 section .text._start
 BITS 16
 _entry16:
+    jmp     short _legacy_16_start
+    nop
+
+times 16 - ($ - _entry16) db 0x90
+
+BITS 64
+_entry64_uefi:
+    ; UEFI entrega RDI = 0x5000 (BootInfo*) em Long Mode 64-bit
+    cli
+    cld
+    ; Carrega nossa GDT 64-bit propria para padronizar seletores (CS=0x18, DS=0x10)
+    lgdt    [rel gdt64_boot_desc]
+    push    0x18
+    lea     rax, [rel .reload_cs64]
+    push    rax
+    retfq
+
+.reload_cs64:
+    mov     ax, 0x10
+    mov     ds, ax
+    mov     es, ax
+    mov     fs, ax
+    mov     gs, ax
+    mov     ss, ax
+    mov     rsp, 0x90000
+
+    ; Instala nossa tabela de paginacao identity-mapped de 4 GB
+    call    configurar_paginacao_64
+
+    ; Verifica se o framebuffer GOP UEFI (BootInfo.fb_addr) esta acima de 4 GB
+    ; e mapeia uma pagina extra de 2 MB caso necessario (comum no OVMF/QEMU)
+    mov     rbx, BOOTINFO_ADDR
+    mov     rax, [rbx + 16]         ; BootInfo.fb_addr
+    test    rax, rax
+    jz      .ir_para_start
+    mov     rcx, 0x100000000        ; 4 GB
+    cmp     rax, rcx
+    jb      .ir_para_start
+    call    mapear_fb_acima_4gb
+
+.ir_para_start:
+    jmp     start
+
+; ============================================================================
+; TRANSICAO LEGACY BIOS (16 -> 32 -> 64-BIT)
+; ============================================================================
+BITS 16
+_legacy_16_start:
     cli
     xor     ax, ax
     mov     ds, ax
@@ -94,22 +139,31 @@ _entry16:
     mov     ss, ax
     mov     sp, 0x7C00
 
-    ; Limpa estrutura VESA em 0x7000
-    mov     dword [0x7000], 0
-    mov     dword [0x7004], 0
+    ; Garante estrutura BootInfo em 0x5000 para modo Legacy BIOS
+    mov     di, BOOTINFO_ADDR
+    mov     word [di + 0], 0x4442   ; "DB"
+    mov     word [di + 2], 0x4659   ; "FY" -> "FYDB"
+    mov     word [di + 4], BOOT_MODE_LEGACY
+    mov     word [di + 6], 0
+    mov     word [di + 8], 0        ; secure_boot = 0
+    mov     word [di + 10], 0
+    mov     word [di + 12], 0
+    mov     word [di + 14], 0
+    mov     dword [di + 16], 0      ; fb_addr = 0 (ate VESA detectar)
+    mov     dword [di + 20], 0
 
-    ; 1. Detectar VESA (VBE2)
-    mov     dword [0x5000], '2EBV'
-    mov     di, 0x5000
+    ; 1. Detectar VESA (VBE2) usando buffer seguro em 0x6000
+    mov     dword [VBE_INFO_BUF], '2EBV'
+    mov     di, VBE_INFO_BUF
     mov     ax, 0x4F00
     int     0x10
     cmp     ax, 0x004F
     jne     .sem_vesa
 
-    ; 2. Tenta modo 0x145; se falhar, usa 0x118 (1024x768 padrao)
+    ; 2. Tenta modo 0x145; se falhar, usa 0x118 (1024x768 32bpp)
     mov     bx, 0x0145
     mov     cx, bx
-    mov     di, 0x5200
+    mov     di, VBE_MODE_BUF
     mov     ax, 0x4F01
     int     0x10
     cmp     ax, 0x004F
@@ -117,23 +171,30 @@ _entry16:
 
     mov     bx, 0x0118
     mov     cx, bx
-    mov     di, 0x5200
+    mov     di, VBE_MODE_BUF
     mov     ax, 0x4F01
     int     0x10
     cmp     ax, 0x004F
     jne     .sem_vesa
 
 .vesa_ok:
-    mov     eax, [es:di+0x28]       ; Endereco fisico do LFB
-    mov     [0x7000], eax
-    mov     ax, [es:di+0x12]        ; Largura
-    mov     [0x7008], ax
-    mov     ax, [es:di+0x14]        ; Altura
-    mov     [0x700A], ax
-    mov     ax, [es:di+0x10]        ; Pitch
-    mov     [0x700C], ax
-    mov     al, [es:di+0x19]        ; BPP
-    mov     [0x700E], al
+    ; Grava dados VESA diretamente na estrutura unificada BootInfo (0x5000)
+    mov     si, BOOTINFO_ADDR
+    mov     eax, [es:di + 0x28]     ; Endereco fisico do LFB
+    mov     [si + 16], eax          ; BootInfo.fb_addr (low 32)
+    mov     dword [si + 20], 0      ; BootInfo.fb_addr (high 32)
+
+    movzx   eax, word [es:di + 0x12]
+    mov     [si + 24], eax          ; BootInfo.fb_width
+
+    movzx   eax, word [es:di + 0x14]
+    mov     [si + 28], eax          ; BootInfo.fb_height
+
+    movzx   eax, word [es:di + 0x10]
+    mov     [si + 32], eax          ; BootInfo.fb_pitch
+
+    movzx   eax, byte [es:di + 0x19]
+    mov     [si + 36], eax          ; BootInfo.fb_bpp
 
     ; 3. Ativar modo grafico VESA com bit LFB (0x4000)
     or      bx, 0x4000
@@ -162,27 +223,50 @@ _entry32:
     mov     ss, ax
     mov     esp, 0x90000
 
-    ; 5. Configurar Paginacao Identity Map de 4 GB (cobre Kernel + Framebuffer LFB)
+    ; 5. Configurar Paginacao Identity Map de 4 GB (0x1000..0x4FFF, preserva 0x5000!)
     mov     edi, 0x1000
     xor     eax, eax
-    mov     ecx, 6144               ; Zera 24 KB (0x1000..0x6FFF)
+    mov     ecx, 4096               ; Zera 16 KB (0x1000..0x4FFF) - NAO toca em 0x5000!
     rep     stosd
 
-    mov     dword [0x1000], 0x2003
-    mov     dword [0x2000], 0x3003
-    mov     dword [0x2008], 0x4003
-    mov     dword [0x2010], 0x5003
-    mov     dword [0x2018], 0x6003
+    mov     dword [0x1000], 0x2003  ; PML4[0] -> PDPT em 0x2000
+    mov     dword [0x2000], 0x3003  ; PDPT[0] -> PD0 em 0x3000 (0..1 GB)
+    mov     dword [0x2008], 0x4003  ; PDPT[1] -> PD1 em 0x4000 (1..2 GB)
+    mov     dword [0x2010], 0x7003  ; PDPT[2] -> PD2 em 0x7000 (2..3 GB)
+    mov     dword [0x2018], 0x7803  ; PDPT[3] -> PD3 em 0x7800 (3..4 GB)
 
+    ; Mapeia primeiros 2 GB (0x3000..0x4FFF = 1024 entradas de 2 MB)
     mov     edi, 0x3000
     mov     eax, 0x00000083         ; Present + RW + Page Size (2MB)
-    mov     ecx, 2048
-.map_4gb:
+    mov     ecx, 1024
+.map_2gb_lo:
     mov     [edi], eax
     add     eax, 0x00200000
     add     edi, 8
     dec     ecx
-    jnz     .map_4gb
+    jnz     .map_2gb_lo
+
+    ; Mapeia de 2 GB a 4 GB (0x7000..0x7FFF = 512 entradas de 2 MB)
+    ; Mas usa 0x7000..0x7FFF (4 KB -> 512 entradas = 1 GB: 2 GB..3 GB)
+    ; e 0x10000..0x10FFF para 3 GB..4 GB (cobre LFB PCI em 0xFD000000 / 0xE0000000!)
+    mov     dword [0x2018], 0x10003 ; PDPT[3] -> PD3 em 0x10000 (3..4 GB)
+    mov     edi, 0x7000
+    mov     ecx, 512
+.map_gb2:
+    mov     [edi], eax
+    add     eax, 0x00200000
+    add     edi, 8
+    dec     ecx
+    jnz     .map_gb2
+
+    mov     edi, 0x10000
+    mov     ecx, 512
+.map_gb3:
+    mov     [edi], eax
+    add     eax, 0x00200000
+    add     edi, 8
+    dec     ecx
+    jnz     .map_gb3
 
     mov     eax, 0x1000
     mov     cr3, eax
@@ -204,6 +288,91 @@ _entry32:
     lgdt    [dword gdt64_boot_desc]
     jmp     dword 0x18:start
 
+; ============================================================================
+; AUXILIARES DE PAGINACAO 64-BIT PARA ENTRADA UEFI (_entry64_uefi)
+; ============================================================================
+BITS 64
+configurar_paginacao_64:
+    mov     rdi, 0x1000
+    xor     eax, eax
+    mov     rcx, 2048               ; Zera 16 KB (0x1000..0x4FFF)
+    rep     stosq
+
+    mov     qword [0x1000], 0x2003
+    mov     qword [0x2000], 0x3003
+    mov     qword [0x2008], 0x4003
+    mov     qword [0x2010], 0x7003
+    mov     qword [0x2018], 0x10003
+
+    mov     rdi, 0x3000
+    mov     rax, 0x00000083
+    mov     rcx, 1024
+.u_lo:
+    mov     [rdi], rax
+    add     rax, 0x00200000
+    add     rdi, 8
+    dec     rcx
+    jnz     .u_lo
+
+    mov     rdi, 0x7000
+    mov     rcx, 512
+.u_gb2:
+    mov     [rdi], rax
+    add     rax, 0x00200000
+    add     rdi, 8
+    dec     rcx
+    jnz     .u_gb2
+
+    mov     rdi, 0x10000
+    mov     rcx, 512
+.u_gb3:
+    mov     [rdi], rax
+    add     rax, 0x00200000
+    add     rdi, 8
+    dec     rcx
+    jnz     .u_gb3
+
+    mov     rax, 0x1000
+    mov     cr3, rax
+    ret
+
+; Mapeia 32 MB em identity-map caso o GOP UEFI esteja acima de 4 GB (ex: 0x8000000000)
+mapear_fb_acima_4gb:
+    ; RAX = endereco fisico base do framebuffer
+    and     rax, ~0x1FFFFF          ; Alinha em 2 MB
+    mov     rdx, rax
+    shr     rdx, 30                 ; Indice PDPT (bits 38..30)
+    and     rdx, 0x1FF
+
+    ; Usa tabela PD dedicada em 0x11000 para esse GB do framebuffer
+    mov     qword [0x2000 + rdx * 8], 0x11003
+    mov     rdi, 0x11000
+    xor     ecx, ecx
+    push    rax
+    xor     eax, eax
+    mov     rcx, 512
+    rep     stosq
+    pop     rax
+
+    mov     rdx, rax
+    shr     rdx, 21                 ; Indice PD (bits 29..21)
+    and     rdx, 0x1FF
+
+    or      rax, 0x00000083         ; Present + RW + 2MB
+    mov     rcx, 16                 ; Mapeia 32 MB (16 x 2 MB) para telas 4K
+.map_gop_loop:
+    cmp     rdx, 512
+    jae     .fim_gop_map
+    mov     [0x11000 + rdx * 8], rax
+    add     rax, 0x00200000
+    inc     rdx
+    dec     rcx
+    jnz     .map_gop_loop
+.fim_gop_map:
+    mov     rax, cr3
+    mov     cr3, rax                ; Flush TLB
+    ret
+
 align 8
 gdt_boot_start:
     dq 0x0000000000000000
@@ -220,13 +389,13 @@ gdt64_boot_desc:
     dw gdt_boot_end - gdt_boot_start - 1
     dq gdt_boot_start
 
-; ======================================
-; ENTRADA PRINCIPAL DO KERNEL (64-BIT)
-; ======================================
+; ============================================================================
+; ENTRADA PRINCIPAL UNIFICADA DO KERNEL (64-BIT)
+; ============================================================================
 BITS 64
 start:
     cli
-    cld                             ; Garante direcao crescente para rep stosb
+    cld
     mov     ax, 0x10
     mov     ds, ax
     mov     es, ax
@@ -238,8 +407,8 @@ start:
     ; 0a. Zera toda a secao .bss (__bss_start ate __bss_end)
     lea     rdi, [rel __bss_start]
     lea     rcx, [rel __bss_end]
-    sub     rcx, rdi                ; RCX = tamanho total do .bss em bytes
-    jbe     .bss_limpo              ; Evita underflow se .bss tiver tamanho 0
+    sub     rcx, rdi
+    jbe     .bss_limpo
     xor     eax, eax
     rep     stosb
 .bss_limpo:
@@ -248,34 +417,48 @@ start:
     call    gdt_init
     call    idt_init
 
-    ; 0c. Silencia todas as IRQs do PIC 8259A legado (evita IRQ0 colidir com Vetor 8 / #DF)
+    ; 0c. Silencia todas as IRQs do PIC 8259A legado
     mov     al, 0xFF
     out     0x21, al
     out     0xA1, al
 
-    ; Transferir dados VESA salvos em 0x7000 com extensao zero para 64/32 bits
-    mov     eax, [0x7000]           ; Leitura 32-bit zera os 32 bits superiores de RAX
-    mov     [fb_base], rax          ; Salva ponteiro completo de 64 bits
-    movzx   eax, word [0x7008]
-    mov     [fb_largura], eax
-    movzx   eax, word [0x700A]
-    mov     [fb_altura], eax
-    movzx   eax, word [0x700C]
-    mov     [fb_pitch], eax
-    movzx   eax, byte [0x700E]
-    mov     [fb_bpp], eax
+    ; 0d. Sincroniza BootInfo (0x5000): Modo (Legacy/UEFI), Secure Boot e Framebuffer
+    mov     rbx, BOOTINFO_ADDR
+    cmp     dword [rbx + 0], BOOTINFO_MAGIC
+    jne     .bootinfo_fallback
 
-    ; Inicializa o driver de video apenas se fb_base for valido
-    cmp     qword [fb_base], 0
+    mov     eax, [rbx + 4]          ; boot_mode (1 = Legacy, 2 = UEFI)
+    mov     [rel boot_modo_atual], eax
+    mov     eax, [rbx + 8]          ; secure_boot (0 = OFF, 1 = ON)
+    mov     [rel boot_secure_ativo], eax
+
+    ; Copia ponteiro 64-bit completo do Framebuffer (VESA LFB ou UEFI GOP)
+    mov     rax, [rbx + 16]         ; BootInfo.fb_addr (64-bit!)
+    mov     [rel fb_base], rax
+    mov     eax, [rbx + 24]
+    mov     [rel fb_largura], eax
+    mov     eax, [rbx + 28]
+    mov     [rel fb_altura], eax
+    mov     eax, [rbx + 32]
+    mov     [rel fb_pitch], eax
+    mov     eax, [rbx + 36]
+    mov     [rel fb_bpp], eax
+    jmp     .init_video
+
+.bootinfo_fallback:
+    mov     dword [rel boot_modo_atual], BOOT_MODE_LEGACY
+    mov     dword [rel boot_secure_ativo], 0
+
+.init_video:
+    cmp     qword [rel fb_base], 0
     je      .pula_fb
     call    fb_inicializar
 
-    ; Pinta a tela inicial
     mov     rdi, COR_FUNDO
     call    gpu_preencher_tela
 .pula_fb:
 
-    ; [CHECKPOINT 1 - Faixa Azul: Video OK, testando print_string]
+    ; [CHECKPOINT 1 - Faixa Azul]
     mov     rdi, 10
     mov     rsi, 10
     mov     rdx, 120
@@ -283,25 +466,50 @@ start:
     mov     r8d, 0xFF0066FF
     call    gpu_preencher_retangulo
 
-    lea     rsi, [msg_cabecalho]
+    lea     rsi, [rel msg_cabecalho]
     call    print_string
 
-    ; ======================================
+    ; Exibe status real do Firmware (Legacy BIOS vs UEFI) e Secure Boot
+    lea     rsi, [rel msg_fw_label]
+    call    print_string
+    cmp     dword [rel boot_modo_atual], BOOT_MODE_UEFI
+    je      .print_uefi
+    lea     rsi, [rel msg_fw_legacy]
+    call    print_string
+    jmp     .print_sb_status
+
+.print_uefi:
+    lea     rsi, [rel msg_fw_uefi]
+    call    print_string
+
+.print_sb_status:
+    cmp     dword [rel boot_secure_ativo], 1
+    je      .print_sb_on
+    lea     rsi, [rel msg_sb_off]
+    call    print_string
+    jmp     .fase_cpu
+
+.print_sb_on:
+    lea     rsi, [rel msg_sb_on]
+    call    print_string
+
+    ; ========================================================================
     ; FASE 1 - CPU
-    ; ======================================
-    lea     rsi, [msg_fase_cpu]
+    ; ========================================================================
+.fase_cpu:
+    lea     rsi, [rel msg_fase_cpu]
     call    print_string
     call    cpu_verificar
     cmp     rax, 1
     jne     .cpu_erro
 
-    lea     rsi, [msg_cpu_info]
+    lea     rsi, [rel msg_cpu_info]
     call    print_string
-    lea     rsi, [cpu_vendor]
+    lea     rsi, [rel cpu_vendor]
     call    print_string
     call    print_newline
 
-    ; [CHECKPOINT 2 - Faixa Verde: CPU e Texto OK, testando Memoria]
+    ; [CHECKPOINT 2 - Faixa Verde]
     mov     rdi, 140
     mov     rsi, 10
     mov     rdx, 250
@@ -309,35 +517,35 @@ start:
     mov     r8d, 0xFF00CC66
     call    gpu_preencher_retangulo
 
-    ; ======================================
+    ; ========================================================================
     ; FASE 2 - MEMORIA REAL
-    ; ======================================
-    lea     rsi, [msg_fase_mem]
+    ; ========================================================================
+    lea     rsi, [rel msg_fase_mem]
     call    print_string
     call    pmm_inicializar
     call    mem_detect_e820
 
-    mov     rax, [mem_total]
-    mov     [mem_total_bytes], rax
-    lea     rsi, [msg_mem_total]
+    mov     rax, [rel mem_total]
+    mov     [rel mem_total_bytes], rax
+    lea     rsi, [rel msg_mem_total]
     call    print_string
     mov     rdi, rax
     call    bytes_para_gb
     call    print_num
-    lea     rsi, [msg_gb_sufixo]
+    lea     rsi, [rel msg_gb_sufixo]
     call    print_string
 
-    mov     rax, [mem_livre]
-    mov     [mem_livre_bytes], rax
-    lea     rsi, [msg_mem_livre]
+    mov     rax, [rel mem_livre]
+    mov     [rel mem_livre_bytes], rax
+    lea     rsi, [rel msg_mem_livre]
     call    print_string
     mov     rdi, rax
     call    bytes_para_gb
     call    print_num
-    lea     rsi, [msg_gb_sufixo]
+    lea     rsi, [rel msg_gb_sufixo]
     call    print_string
 
-    ; [CHECKPOINT 3 - Faixa Amarela: Memoria OK, testando Disco]
+    ; [CHECKPOINT 3 - Faixa Amarela]
     mov     rdi, 270
     mov     rsi, 10
     mov     rdx, 380
@@ -345,10 +553,10 @@ start:
     mov     r8d, 0xFFFFCC00
     call    gpu_preencher_retangulo
 
-    ; ======================================
+    ; ========================================================================
     ; FASE 3 - DISCO REAL
-    ; ======================================
-    lea     rsi, [msg_fase_disco]
+    ; ========================================================================
+    lea     rsi, [rel msg_fase_disco]
     call    print_string
 
     xor     rdi, rdi
@@ -357,37 +565,36 @@ start:
     jne     .sem_disco
 
     xor     rdi, rdi
-    lea     rsi, [info_disco]
+    lea     rsi, [rel info_disco]
     call    identificar_disco
 
     call    obter_tamanho_disco
     mov     rdi, rax
     call    bytes_para_gb
-    mov     [disco_tam_gb], eax
+    mov     [rel disco_tam_gb], eax
 
-    lea     rsi, [msg_disco_tam]
+    lea     rsi, [rel msg_disco_tam]
     call    print_string
     mov     rdi, rax
     call    print_num
-    lea     rsi, [msg_gb_sufixo]
+    lea     rsi, [rel msg_gb_sufixo]
     call    print_string
 
     jmp     .montar_estrutura
 
 .sem_disco:
-    lea     rsi, [msg_sem_disco]
+    lea     rsi, [rel msg_sem_disco]
     call    print_string
 
 .montar_estrutura:
-    ; ======================================
+    ; ========================================================================
     ; FASE 4 - ESTRUTURA DE DIRETORIOS (/fyd) & SEGURANCA
-    ; ======================================
+    ; ========================================================================
     call    construir_estrutura_sistema
     call    hosts_inicializar
     call    fydlog_inicializar
-    
 
-    ; Inicializa o CVE Guard e carrega assinaturas base (com alinhamento ABI 16B)
+    ; Inicializa o CVE Guard e carrega assinaturas base (alinhamento ABI 16B)
     push    rbp
     mov     rbp, rsp
     and     rsp, -16
@@ -417,10 +624,10 @@ start:
     mov     rsp, rbp
     pop     rbp
 
-    ; ======================================
-    ; FASE 5 - PERIFERICOS & REDE (AUDIO, BLUETOOTH, E1000)
-    ; ======================================
-    lea     rsi, [msg_fase_hw]
+    ; ========================================================================
+    ; FASE 5 - PERIFERICOS & REDE REAL (AUDIO, BLUETOOTH, E1000 PCI)
+    ; ========================================================================
+    lea     rsi, [rel msg_fase_hw]
     call    print_string
 
     call    audio_init
@@ -432,15 +639,16 @@ start:
 .sem_bt:
 
     call    inicializar_nic_mmio
+    call    net_inicializar
 
-    lea     rsi, [msg_hw_ok]
+    lea     rsi, [rel msg_hw_ok]
     call    print_string
 
 .menu:
-    ; ======================================
-    ; MENU
-    ; ======================================
-    lea     rsi, [msg_opcoes]
+    ; ========================================================================
+    ; MENU PRINCIPAL
+    ; ========================================================================
+    lea     rsi, [rel msg_opcoes]
     call    print_string
 
 .escolha:
@@ -449,24 +657,23 @@ start:
     je      .modo_terminal
     cmp     al, '2'
     je      .modo_grafico
-    pause                           ; Reduz consumo de CPU durante espera
+    pause
     jmp     .escolha
 
 .cpu_erro:
-    lea     rsi, [msg_cpu_erro]
+    lea     rsi, [rel msg_cpu_erro]
     call    print_string
     cli
     hlt
 
-; ======================================
+; ============================================================================
 ; MODO GRAFICO
-; ======================================
+; ============================================================================
 .modo_grafico:
     call    clear_screen
     mov     rdi, COR_FUNDO
     call    gpu_preencher_tela
 
-    ; Garante alinhamento estrito de 16 bytes na pilha antes de chamar C (System V ABI)
     push    rbp
     mov     rbp, rsp
     and     rsp, -16
@@ -477,78 +684,31 @@ start:
     pop     rbp
 
     call    clear_screen
-    lea     rsi, [msg_encerrado]
-    call    print_string
-    call    print_newline
-    jmp     .modo_terminal
-.barra_loop:
-    cmp     ebx, 100
-    jg      .barra_fim
-
-    mov     rax, r12
-    mul     rbx
-    mov     ecx, 100
-    div     ecx
-
-    mov     r8d, COR_ROXO_NEON
-    cmp     ebx, 100
-    jne     .desenha
-    mov     r8d, COR_CIANO_NEON
-.desenha:
-    mov     rdi, r14
-    mov     rsi, r15
-    lea     rdx, [r14 + rax]
-    lea     rcx, [r15 + r13]
-    call    gpu_preencher_retangulo
-
-    mov     rcx, 350000
-.pausa:
-    pause
-    dec     rcx
-    jnz     .pausa
-    inc     ebx
-    jmp     .barra_loop
-
-.barra_fim:
-    lea     rsi, [msg_carregando]
-    call    print_string
-    call    print_newline
-
-    ; Garante alinhamento estrito de 16 bytes na pilha antes de chamar C (System V ABI)
-    push    rbp
-    mov     rbp, rsp
-    and     rsp, -16
-
-    call    kernel_exec_bin
-
-    mov     rsp, rbp
-    pop     rbp
-
-    lea     rsi, [msg_encerrado]
+    lea     rsi, [rel msg_encerrado]
     call    print_string
     call    print_newline
     jmp     .modo_terminal
 
-; ======================================
+; ============================================================================
 ; MODO TERMINAL
-; ======================================
+; ============================================================================
 .modo_terminal:
-    call    clear_screen            ; Zera cursor_x e cursor_y no topo (0, 0)
+    call    clear_screen
     mov     rdi, COR_FUNDO
     call    gpu_preencher_tela
-    lea     rsi, [msg_cabecalho]
+    lea     rsi, [rel msg_cabecalho]
     call    print_string
 
 main_loop:
     call    reset_buffer
-    lea     rsi, [msg_prompt]
+    lea     rsi, [rel msg_prompt]
     call    print_string
     call    set_input_base
 .le_tecla:
     call    get_key
     cmp     al, KEY_NULL
     jne     .processa_tecla
-    pause                           ; Alivia CPU enquanto aguarda digitacao
+    pause
     jmp     .le_tecla
 .processa_tecla:
     cmp     al, KEY_ENTER
@@ -565,25 +725,26 @@ main_loop:
     call    print_char
     jmp     .le_tecla
 .trata_bs:
-    cmp     dword [buf_head], 0
+    cmp     dword [rel buf_head], 0
     je      .le_tecla
     mov     al, KEY_BACKSPACE
     call    print_char
     mov     al, ' '
     call    print_char
     call    print_char
-    dec     dword [buf_head]
-    mov     eax, [buf_head]
-    mov     byte [buffer + rax], 0
+    dec     dword [rel buf_head]
+    mov     eax, [rel buf_head]
+    lea     rcx, [rel buffer]
+    mov     byte [rcx + rax], 0
     jmp     .le_tecla
 .executa:
     call    print_newline
-    mov     eax, [buf_head]
-    mov     byte [buffer + rax], 0
-    cmp     dword [buf_head], 0
+    mov     eax, [rel buf_head]
+    lea     rcx, [rel buffer]
+    mov     byte [rcx + rax], 0
+    cmp     dword [rel buf_head], 0
     je      main_loop
 
-    ; Inspeciona o comando contra as regras do CVE Guard (alinhado 16B)
     push    rbp
     mov     rbp, rsp
     and     rsp, -16
@@ -604,9 +765,9 @@ main_loop:
     call    print_string
     jmp     main_loop
 
-; ======================================
-; CONVERSAO DE UNIDADES
-; ======================================
+; ============================================================================
+; CONVERSAO DE UNIDADES & CPU
+; ============================================================================
 section .text
 bytes_para_gb:
     mov     rax, rdi
@@ -648,9 +809,6 @@ print_num:
     pop     rbx
     ret
 
-; ======================================
-; CPU - DETECCAO
-; ======================================
 cpu_verificar:
     push    rbx
     pushfq
@@ -670,10 +828,10 @@ cpu_verificar:
 
     mov     rax, 0
     cpuid
-    mov     [cpu_vendor], ebx
-    mov     [cpu_vendor+4], edx
-    mov     [cpu_vendor+8], ecx
-    mov     byte [cpu_vendor+12], 0
+    mov     [rel cpu_vendor], ebx
+    mov     [rel cpu_vendor + 4], edx
+    mov     [rel cpu_vendor + 8], ecx
+    mov     byte [rel cpu_vendor + 12], 0
 
     mov     rax, 1
     cpuid
@@ -687,77 +845,32 @@ cpu_verificar:
     xor     rax, rax
     ret
 
-; ======================================
-; PAGINACAO
-; ======================================
-paging_init:
-    push    rbx
-    mov     rdi, pml4
-    mov     rcx, 512
-    xor     rax, rax
-    rep     stosq
-    mov     rdi, pdpt
-    mov     rcx, 512
-    xor     rax, rax
-    rep     stosq
-    mov     rdi, pdt
-    mov     rcx, 512
-    xor     rax, rax
-    rep     stosq
-
-    mov     rax, pdpt
-    or      rax, 1 | 2
-    mov     [pml4], rax
-    mov     rax, pdt
-    or      rax, 1 | 2
-    mov     [pdpt], rax
-
-    mov     rdi, pdt
-    mov     rcx, 512
-    mov     rax, 1 | 2 | (1<<7)
-.map_2mb:
-    mov     [rdi], rax
-    add     rax, PAGE_2MB
-    add     rdi, 8
-    dec     rcx
-    jnz     .map_2mb
-
-    mov     rax, pml4
-    mov     cr3, rax
-    mov     rax, cr4
-    or      rax, 1<<5
-    mov     cr4, rax
-    mov     rax, cr0
-    or      rax, 1<<31
-    mov     cr0, rax
-    pop     rbx
-    ret
-
-; ======================================
-; MENSAGENS
-; ======================================
+; ============================================================================
+; MENSAGENS (.rodata)
+; ============================================================================
 section .rodata
 msg_cabecalho:     db '+------------------------------------------------------------+',10
                    db '|          FYDELISTECH OS - Sistema Operacional do Zero      |',10
                    db '|                    v4.2 - Salvador - Bahia                 |',10
                    db '+------------------------------------------------------------+',10,10,0
 
+msg_fw_label:      db '  [FW] Firmware: ', 0
+msg_fw_legacy:     db 'Legacy BIOS (MBR)', 0
+msg_fw_uefi:       db 'UEFI 64-bit (GPT)', 0
+msg_sb_on:         db ' | Secure Boot: HABILITADO', 10, 0
+msg_sb_off:        db ' | Secure Boot: DESABILITADO', 10, 0
+
 msg_fase_cpu:      db '  [*] Verificando processador...',0
 msg_fase_mem:      db '  [*] Inicializando memoria...',0
 msg_fase_disco:    db '  [*] Detectando armazenamento...',0
 msg_fase_hw:       db '  [*] Inicializando Audio, Bluetooth e Rede E1000...',0
 msg_hw_ok:         db ' OK',10,0
-msg_fase_gpu:      db '  [*] Preparando interface...',0
 
 msg_cpu_info:      db '  [OK] Processador: ',0
 msg_mem_total:     db '  [OK] Memoria Total: ',0
 msg_mem_livre:     db '  [OK] Memoria Livre: ',0
-msg_disco_info:    db '  [OK] Disco: ',0
-msg_disco_modelo:  db '  [OK] Modelo: ',0
 msg_disco_tam:     db '  [OK] Tamanho Total: ',0
 msg_gb_sufixo:     db ' GB',10,0
-msg_mb_sufixo:     db ' MB',10,0
-msg_sep:           db ' / ',0
 
 msg_opcoes:        db 10,'  Escolha:',10
                    db '    [1] Terminal FydelTerm',10
@@ -765,11 +878,8 @@ msg_opcoes:        db 10,'  Escolha:',10
 msg_prompt:        db 'fydelterm> ',0
 msg_sem_disco:     db '  [!] Disco nao detectado',10,0
 msg_cpu_erro:      db '  [X] CPU incompativel',10,0
-
-msg_carregando:    db 'Enviando para framebuffer...',10,0
 msg_encerrado:     db 'Sessao grafica encerrada.',10,0
 
-; Assinaturas iniciais e alerta do CVE Guard
 msg_cve_bloqueado: db '  [CVE-GUARD] Execucao bloqueada: assinatura maliciosa detectada!',10,0
 
 cve_id_1:          db 'CVE-2024-3094',0
@@ -788,23 +898,17 @@ cve_id_4:          db 'FYD-SYS-002',0
 cve_pad_4:         db '*rm -rf /*',0
 cve_msg_4:         db 'Comando destrutivo bloqueado',0
 
-; ======================================
-; DADOS
-; ======================================
+; ============================================================================
+; DADOS (.bss)
+; ============================================================================
 section .bss
 align 4
+boot_modo_atual:   resd 1
+boot_secure_ativo: resd 1
 cpu_vendor:        resb 16
 mem_total_bytes:   resq 1
 mem_livre_bytes:   resq 1
-disco_setores:     resq 1
 disco_tam_gb:      resd 1
-disco_modelo_str:  resb 40
 
 align 16
 info_disco:        resw 256
-buffer_setor:      resb 512
-
-align 4096
-pml4:   resb PAGE_SIZE
-pdpt:   resb PAGE_SIZE
-pdt:    resb PAGE_SIZE
