@@ -1,4 +1,14 @@
 # 📚 Documentação — FydelisTechOS / FydelTerm
+<div align="center">
+
+[![C](https://img.shields.io/badge/Language-C-00599C?style=for-the-badge&logo=c&logoColor=white)]()
+[![GTK4](https://img.shields.io/badge/GUI-GTK4-55A6E0?style=for-the-badge&logo=gtk&logoColor=white)]()
+[![FydelTerm](https://img.shields.io/badge/Terminal-FydelTerm-4169E1?style=for-the-badge)]()
+[![Version](https://img.shields.io/badge/Version-4.2-228B22?style=for-the-badge)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+
+</div>
+
 
 Bem-vindo ao centro oficial de documentação do **FydelisTechOS — V2**. Aqui você encontra a visão completa do projeto: sua história, arquitetura, estado atual e os caminhos percorridos até chegar onde estamos.
 
@@ -8,7 +18,6 @@ Bem-vindo ao centro oficial de documentação do **FydelisTechOS — V2**. Aqui 
 
 ### 📖 História e Evolução
 
-Tabela
 
 | Documento | Descrição |
 | --- | --- |
@@ -18,7 +27,6 @@ Tabela
 
 ### 🏗️ Arquitetura e Sistema
 
-Tabela
 
 | Documento | Descrição |
 | --- | --- |
@@ -51,6 +59,18 @@ O **FydelisTechOS** é um sistema operacional em desenvolvimento, construído de
 - **Progresso contínuo:** o sistema não está completo — está em constante ajuste, evolução e refinamento.
 
 ---
+
+## 📸 Interface do Sistema
+
+<p align="center">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/FydelTerm.png" alt="FydelisTechOS Dashboard" width="100%">
+</p>
+<p align="center">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/Login.png" alt="FydelisTechOS Dashboard" width="100%">
+</p>
+<p align="center">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/Desktop.png" alt="FydelisTechOS Dashboard" width="100%">
+</p>
 
 ## 🗺️ Panorama da Estrutura do Sistema
 
