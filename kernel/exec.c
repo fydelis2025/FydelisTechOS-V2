@@ -111,6 +111,11 @@ extern void dhcp_cliente_processar(void);
 extern uint32_t dhcp_ler_status(void);
 extern const char *rede_ler_ip(void);
 
+extern void explorer_alternar_minimizar(void);
+extern int  explorer_esta_minimizado(void);
+extern void browser_alternar_minimizar(void);
+extern int  browser_esta_minimizado(void);
+
 enum {
     MODO_JANELA_SISTEMA  = 1,
     MODO_JANELA_APPS     = 3,
@@ -1841,6 +1846,29 @@ static int exibir_desktop_grafico(int L, int A) {
             else if (modo_janela == MODO_JANELA_CONFIG) rotulo_aba = "Configuracoes";
             gpu_escrever_texto(rotulo_aba, tab_x + 16, btn_f_y + 8, COR_TEXTO_BRANCO);
 
+            /* Abas dinâmicas dos aplicativos abertos/minimizados */
+            int prox_tab_x = tab_x + 203;
+
+            if (app_explorer.aberta) {
+                int exp_ativo = !explorer_esta_minimizado();
+                desenhar_caixa_com_borda(prox_tab_x, btn_f_y + 1, 140, 30, 1,
+                    exp_ativo ? COR_CIANO_NEON : COR_ROXO_NEON,
+                    exp_ativo ? COR_HOVER : COR_INPUT_BG);
+                gpu_desenhar_icone(icone_pasta_aberta, prox_tab_x + 8, btn_f_y + 6, ICONE_TAM, ICONE_TAM);
+                gpu_escrever_texto("Explorer", prox_tab_x + 32, btn_f_y + 8, COR_TEXTO_BRANCO);
+                prox_tab_x += 148;
+            }
+
+            if (app_browser.aberta) {
+                int brw_ativo = !browser_esta_minimizado();
+                desenhar_caixa_com_borda(prox_tab_x, btn_f_y + 1, 140, 30, 1,
+                    brw_ativo ? COR_CIANO_NEON : COR_ROXO_NEON,
+                    brw_ativo ? COR_HOVER : COR_INPUT_BG);
+                gpu_desenhar_icone(icone_ethernet, prox_tab_x + 8, btn_f_y + 6, ICONE_TAM, ICONE_TAM);
+                gpu_escrever_texto("Browser", prox_tab_x + 32, btn_f_y + 8, COR_TEXTO_BRANCO);
+                prox_tab_x += 148;
+            }
+
             desenhar_systray(L, taskbar_y, taskbar_h, link_rede_ativo, disco_detectado, bt_estado, audio_estado, &dt_atual, mx, my);
 
             int term_btn_w = 132;
@@ -2037,7 +2065,7 @@ static int exibir_desktop_grafico(int L, int A) {
                     }
                 }
             }
-            else if (app_browser.aberta &&
+            else if (app_browser.aberta && !browser_esta_minimizado() &&
                      ponto_no_retangulo(mx, my, app_browser.x, app_browser.y,
                                         app_browser.w, app_browser.h)) {
                 int rel_x = mx - app_browser.x;
@@ -2047,7 +2075,7 @@ static int exibir_desktop_grafico(int L, int A) {
                     rel_y >= 3 && rel_y <= 24) {
                     app_browser.aberta = 0;
                     arrastando_brw = 0;
-                } else if (rel_y >= 0 && rel_y <= 28) {
+                } else if (rel_y >= 0 && rel_y <= 28 && rel_x < app_browser.w - 72 && app_browser.w < L) {
                     arrastando_brw = 1;
                     brw_drag_off_x = rel_x;
                     brw_drag_off_y = rel_y;
@@ -2058,7 +2086,7 @@ static int exibir_desktop_grafico(int L, int A) {
                 menu_aberto = 0;
                 precisa_redesenhar = 1;
             }
-            else if (app_explorer.aberta &&
+            else if (app_explorer.aberta && !explorer_esta_minimizado() &&
                      ponto_no_retangulo(mx, my, app_explorer.x, app_explorer.y,
                                         app_explorer.w, app_explorer.h)) {
                 int rel_x = mx - app_explorer.x;
@@ -2068,7 +2096,7 @@ static int exibir_desktop_grafico(int L, int A) {
                     rel_y >= 3 && rel_y <= 24) {
                     app_explorer.aberta = 0;
                     arrastando_exp = 0;
-                } else if (rel_y >= 0 && rel_y <= 28) {
+                } else if (rel_y >= 0 && rel_y <= 28 && rel_x < app_explorer.w - 72 && app_explorer.w < L) {
                     arrastando_exp = 1;
                     exp_drag_off_x = rel_x;
                     exp_drag_off_y = rel_y;
@@ -2149,6 +2177,27 @@ static int exibir_desktop_grafico(int L, int A) {
                 cursor_restaurar_fundo();
                 return 0;
             }
+            else if (my >= taskbar_y) {
+                int prox_tab_x = (btn_f_x + btn_f_w + 10) + 203;
+                if (app_explorer.aberta) {
+                    if (ponto_no_retangulo(mx, my, prox_tab_x, btn_f_y + 1, 140, 30)) {
+                        explorer_alternar_minimizar();
+                        arrastando_exp = 0;
+                        menu_aberto = 0;
+                        precisa_redesenhar = 1;
+                    }
+                    prox_tab_x += 148;
+                }
+                if (app_browser.aberta) {
+                    if (ponto_no_retangulo(mx, my, prox_tab_x, btn_f_y + 1, 140, 30)) {
+                        browser_alternar_minimizar();
+                        arrastando_brw = 0;
+                        menu_aberto = 0;
+                        precisa_redesenhar = 1;
+                    }
+                    prox_tab_x += 148;
+                }
+            }
             else if (ponto_no_retangulo(mx, my, 22, 54, 110, 22)) {
                 app_explorer.abrir();
                 menu_aberto = 0;
@@ -2200,7 +2249,7 @@ static int exibir_desktop_grafico(int L, int A) {
             if (eth_popup_aberto) {
                 eth_popup_on_key(tecla);
                 precisa_redesenhar = 1;
-            } else if (app_browser.aberta) {
+            } else if (app_browser.aberta && !browser_esta_minimizado()) {
                 if (tecla == 27) {
                     app_browser.aberta = 0;
                     arrastando_brw = 0;
@@ -2208,7 +2257,7 @@ static int exibir_desktop_grafico(int L, int A) {
                     app_browser.on_key(tecla);
                 }
                 precisa_redesenhar = 1;
-            } else if (app_explorer.aberta) {
+            } else if (app_explorer.aberta && !explorer_esta_minimizado()) {
                 if (tecla == 27) {
                     app_explorer.aberta = 0;
                     arrastando_exp = 0;
