@@ -25,6 +25,13 @@ VIRTIO_GPU_CMD_RESOURCE_CREATE_2D equ 0x0101
 VIRTIO_GPU_CMD_SET_SCANOUT        equ 0x0103
 VIRTIO_GPU_CMD_RESOURCE_FLUSH     equ 0x0104
 VIRTIO_GPU_CMD_TRANSFER_TO_HOST   equ 0x0105
+VIRTIO_GPU_RESP_OK_NODATA         equ 0x1100
+
+; Descritores Virtqueue e Recurso Padrão
+VIRTQ_DESC_F_NEXT                 equ 1
+VIRTQ_DESC_F_WRITE                equ 2
+VIRTIO_GPU_RES_ID_PADRAO          equ 1
+VIRTIO_VQ_POLL_LIMIT              equ 0x000FFFFF
 
 ; Formatos de pixel (compatível com XRGB8888 / B8G8R8A8)
 VIRTIO_GPU_FORMAT_B8G8R8A8        equ 1
@@ -35,6 +42,8 @@ global virtio_detectar
 global virtio_inicializar
 global virtio_preencher_retangulo
 global virtio_copiar_blit
+global virtio_enviar_transfer_flush
+global virtio_configurar_virtqueue
 global virtio_esta_ativo
 global virtio_ler_status
 
@@ -49,8 +58,16 @@ extern fb_pitch
 section .bss
 align 4096
 virtio_vq_ring:           resb 4096         ; Fila Virtqueue alinhada em página 4K
+vgpu_cmd_buf:             resb 64           ; Buffer de comando (transfer/flush)
+vgpu_resp_buf:            resb 64           ; Buffer de resposta do host
 virtio_mmio_base:         resq 1
 fb_virtio_endereco:       resq 1
+vgpu_desc_table:          resq 1            ; Endereço físico/virtual da tabela de descritores
+vgpu_avail_ring:          resq 1            ; Endereço do Available Ring
+vgpu_used_ring:           resq 1            ; Endereço do Used Ring
+vgpu_notify_mmio:         resq 1            ; Endereço MMIO/BAR de notificação da queue 0
+vgpu_last_used_idx:       resw 1            ; Último used.idx consumido
+vgpu_avail_seq:           resw 1            ; Contador sequencial de avail.idx
 virtio_pitch_bytes:       resd 1
 resolucao_largura:        resd 1
 resolucao_altura:         resd 1
@@ -96,6 +113,20 @@ virtio_detectar:
     ret
 
 ; ==========================================
+; ⚙️ CONFIGURAR PONTEIROS DA VIRTQUEUE 2D
+; Entrada: rdi=desc_table, rsi=avail_ring, rdx=used_ring, rcx=notify_mmio
+; ==========================================
+virtio_configurar_virtqueue:
+    mov     [rel vgpu_desc_table], rdi
+    mov     [rel vgpu_avail_ring], rsi
+    mov     [rel vgpu_used_ring], rdx
+    mov     [rel vgpu_notify_mmio], rcx
+    mov     word [rel vgpu_last_used_idx], 0
+    mov     word [rel vgpu_avail_seq], 0
+    mov     rax, 1
+    ret
+
+; ==========================================
 ; ✅ INICIALIZAR — Sincroniza Framebuffer e Virtqueue
 ; ==========================================
 virtio_inicializar:
@@ -134,11 +165,13 @@ virtio_inicializar:
 .salva_pitch:
     mov     [rel virtio_pitch_bytes], edx
 
-    ; Limpa área da Virtqueue 2D (controlq)
+    ; Limpa área da Virtqueue 2D (controlq) e contadores de fila
     lea     rdi, [rel virtio_vq_ring]
     mov     rcx, 4096 / 8
     xor     rax, rax
     rep     stosq
+    mov     word [rel vgpu_last_used_idx], 0
+    mov     word [rel vgpu_avail_seq], 0
 
     mov     byte [rel virtio_gpu_ativado], 1
 
@@ -273,7 +306,6 @@ virtio_copiar_blit:
     push    r14
     push    r15
 
-    ; Obtém largura e altura ativas
     mov     r14d, [rel resolucao_largura]
     test    r14d, r14d
     jnz     .w_ok
@@ -376,7 +408,7 @@ virtio_copiar_blit:
     test    r9, r9
     jle     .blit_pop_fim
 
-    ; Decide sentido vertical: se dst_y > src_y, copia de baixo para cima
+    ; Se dst_y > src_y, copia de baixo para cima para evitar sobreposição
     cmp     rcx, rsi
     jg      .blit_reverso
 
@@ -456,6 +488,172 @@ virtio_copiar_blit:
 
 .fim_blit:
     mov     rax, 1
+    ret
+
+; ==========================================
+; 🔄 ENVIAR TRANSFER_TO_HOST + RESOURCE_FLUSH
+; Entrada: rdi=x, rsi=y, rdx=largura, rcx=altura
+; Retorno: rax = 1 sucesso, 0 falha ou fila não configurada
+; ==========================================
+virtio_enviar_transfer_flush:
+    push    rbx
+    push    r12
+    push    r13
+    push    r14
+    push    r15
+
+    mov     r12, rdi
+    mov     r13, rsi
+    mov     r14, rdx
+    mov     r15, rcx
+
+    cmp     byte [rel virtio_gpu_ativado], 1
+    jne     .flush_erro
+    mov     rax, [rel vgpu_desc_table]
+    test    rax, rax
+    jz      .flush_erro
+    mov     rax, [rel vgpu_avail_ring]
+    test    rax, rax
+    jz      .flush_erro
+    mov     rax, [rel vgpu_used_ring]
+    test    rax, rax
+    jz      .flush_erro
+
+    ; 1. Monta VIRTIO_GPU_CMD_TRANSFER_TO_HOST (0x0105)
+    lea     rbx, [rel vgpu_cmd_buf]
+    mov     dword [rbx + 0],  VIRTIO_GPU_CMD_TRANSFER_TO_HOST
+    mov     dword [rbx + 4],  0
+    mov     qword [rbx + 8],  0
+    mov     dword [rbx + 16], 0
+    mov     dword [rbx + 20], 0
+    mov     [rbx + 24], r12d
+    mov     [rbx + 28], r13d
+    mov     [rbx + 32], r14d
+    mov     [rbx + 36], r15d
+
+    mov     eax, [rel virtio_pitch_bytes]
+    imul    rax, r13
+    lea     rax, [rax + r12 * 4]
+    mov     [rbx + 40], rax                 ; offset dentro do recurso
+    mov     dword [rbx + 48], VIRTIO_GPU_RES_ID_PADRAO
+    mov     dword [rbx + 52], 0
+
+    lea     rdi, [rel vgpu_resp_buf]
+    mov     dword [rdi + 0], 0
+
+    mov     rdi, rbx
+    mov     rsi, 56
+    lea     rdx, [rel vgpu_resp_buf]
+    mov     rcx, 24
+    call    .submeter_e_aguardar
+    test    rax, rax
+    jz      .flush_erro
+
+    lea     rdi, [rel vgpu_resp_buf]
+    cmp     dword [rdi + 0], VIRTIO_GPU_RESP_OK_NODATA
+    jne     .flush_erro
+
+    ; 2. Monta VIRTIO_GPU_CMD_RESOURCE_FLUSH (0x0104)
+    lea     rbx, [rel vgpu_cmd_buf]
+    mov     dword [rbx + 0],  VIRTIO_GPU_CMD_RESOURCE_FLUSH
+    mov     dword [rbx + 4],  0
+    mov     qword [rbx + 8],  0
+    mov     dword [rbx + 16], 0
+    mov     dword [rbx + 20], 0
+    mov     [rbx + 24], r12d
+    mov     [rbx + 28], r13d
+    mov     [rbx + 32], r14d
+    mov     [rbx + 36], r15d
+    mov     dword [rbx + 40], VIRTIO_GPU_RES_ID_PADRAO
+    mov     dword [rbx + 44], 0
+
+    lea     rdi, [rel vgpu_resp_buf]
+    mov     dword [rdi + 0], 0
+
+    mov     rdi, rbx
+    mov     rsi, 48
+    lea     rdx, [rel vgpu_resp_buf]
+    mov     rcx, 24
+    call    .submeter_e_aguardar
+    test    rax, rax
+    jz      .flush_erro
+
+    lea     rdi, [rel vgpu_resp_buf]
+    cmp     dword [rdi + 0], VIRTIO_GPU_RESP_OK_NODATA
+    jne     .flush_erro
+
+    mov     rax, 1
+    jmp     .flush_fim
+
+.flush_erro:
+    xor     rax, rax
+
+.flush_fim:
+    pop     r15
+    pop     r14
+    pop     r13
+    pop     r12
+    pop     rbx
+    ret
+
+; Submete par de descritores (comando -> resposta) e aguarda used.idx
+; Entrada: rdi=cmd_ptr, rsi=cmd_len, rdx=resp_ptr, rcx=resp_len
+.submeter_e_aguardar:
+    push    rbx
+    push    r8
+    push    r9
+
+    mov     rbx, [rel vgpu_desc_table]
+    mov     [rbx + 0],  rdi
+    mov     [rbx + 8],  esi
+    mov     word  [rbx + 12], VIRTQ_DESC_F_NEXT
+    mov     word  [rbx + 14], 1
+
+    mov     [rbx + 16], rdx
+    mov     [rbx + 24], ecx
+    mov     word  [rbx + 28], VIRTQ_DESC_F_WRITE
+    mov     word  [rbx + 30], 0
+
+    mov     r8, [rel vgpu_avail_ring]
+    movzx   eax, word [rel vgpu_avail_seq]
+    and     eax, 0x00FF
+    mov     word [r8 + 4 + rax * 2], 0
+
+    mfence
+    inc     word [rel vgpu_avail_seq]
+    mov     ax, [rel vgpu_avail_seq]
+    mov     word [r8 + 2], ax
+    mfence
+
+    mov     rax, [rel vgpu_notify_mmio]
+    test    rax, rax
+    jz      .aguardar_used
+    mov     word [rax], 0
+
+.aguardar_used:
+    mov     r9, [rel vgpu_used_ring]
+    mov     rcx, VIRTIO_VQ_POLL_LIMIT
+    mov     dx, [rel vgpu_last_used_idx]
+
+.loop_used:
+    cmp     word [r9 + 2], dx
+    jne     .consumido_ok
+    pause
+    dec     rcx
+    jnz     .loop_used
+
+    xor     rax, rax
+    jmp     .sub_fim
+
+.consumido_ok:
+    mov     ax, [r9 + 2]
+    mov     [rel vgpu_last_used_idx], ax
+    mov     rax, 1
+
+.sub_fim:
+    pop     r9
+    pop     r8
+    pop     rbx
     ret
 
 ; ==========================================
