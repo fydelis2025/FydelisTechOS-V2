@@ -15,6 +15,6 @@
 
 ## Capturas de Referência
 
-* [Desktop](../assets/images/Desktop.png)
-* [FyelTerm](../assets/images/FyelTerm.png)
-* [Login](../assets/images/Login.png)
+* [Desktop](../Desktop.png)
+* [FyelTerm](../FyelTerm.png)
+* [Login](../Login.png)
