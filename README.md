@@ -9,6 +9,9 @@
 
 </div>
 
+<p align="center">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/assets/images/logo_menu.png" alt="FydelisTechOS Dashboard" width="100%">
+</p>
 
 Bem-vindo ao centro oficial de documentação do **FydelisTechOS — V2**. Aqui você encontra a visão completa do projeto: sua história, arquitetura, estado atual e os caminhos percorridos até chegar onde estamos.
 
@@ -34,11 +37,17 @@ Bem-vindo ao centro oficial de documentação do **FydelisTechOS — V2**. Aqui 
 | **Layout de Disco e Boot** | Organização da imagem híbrida, setores de boot, endereçamento LBA e carregamento do kernel |
 | **Gráficos e GPU** | Sistema de despacho (`gpu_dispatch`), suporte a `virtio_gpu` e estratégias de fallback genérico |
 
-### 🖼️ Galeria de Referência
+## 📸 Interface do Sistema
 
-- **Captura — Área de Trabalho**
-- **Captura — FydelTerm**
-- **Captura — Tela de Login**
+<p align="center">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/FyelTerm.png" alt="FydelisTechOS Dashboard" width="100%">
+</p>
+<p align="center">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/Login.png" alt="FydelisTechOS Dashboard" width="100%">
+</p>
+<p align="center">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/Desktop.png" alt="FydelisTechOS Dashboard" width="100%">
+</p>
 
 ---
 
@@ -59,18 +68,6 @@ O **FydelisTechOS** é um sistema operacional em desenvolvimento, construído de
 - **Progresso contínuo:** o sistema não está completo — está em constante ajuste, evolução e refinamento.
 
 ---
-
-## 📸 Interface do Sistema
-
-<p align="center">
-  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/FyelTerm.png" alt="FydelisTechOS Dashboard" width="100%">
-</p>
-<p align="center">
-  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/Login.png" alt="FydelisTechOS Dashboard" width="100%">
-</p>
-<p align="center">
-  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/Desktop.png" alt="FydelisTechOS Dashboard" width="100%">
-</p>
 
 ## 🗺️ Panorama da Estrutura do Sistema
 
