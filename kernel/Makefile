@@ -104,6 +104,7 @@ OBJS = \
     ../drivers/audio.o \
     ../drivers/video.o \
     ../drivers/rede.o \
+    ../drivers/net_core.o \
     ../drivers/rede_bridge.o \
     ../drivers/wifi.o \
     ../drivers/bluetooth.o \
