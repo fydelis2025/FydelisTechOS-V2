@@ -73,7 +73,7 @@ gpu_inicializar:
     ret
 
 ; ==========================================
-; 🎨 DESENHAR RETÂNGULO
+; DESENHAR RETÂNGULO
 ; Entrada: rdi=x, rsi=y, rdx=largura, rcx=altura, r8d=cor (0xAARRGGBB)
 ; ==========================================
 gpu_preencher_retangulo:
