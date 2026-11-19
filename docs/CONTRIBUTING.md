@@ -1,55 +1,59 @@
 # 🤝 Como Contribuir com o FydelisTechOS
 
-Primeiramente, muito obrigado por seu interesse em contribuir com o FydelisTechOS! 💜
+Primeiramente, muito obrigado pelo seu interesse em contribuir com o **FydelisTechOS**! 💜
 
-> Este projeto está em fase de desenvolvimento ativo e, no momento, é conduzido de forma individual. Isso não significa que sua ajuda não seja bem-vinda — muito pelo contrário! Toda perspectiva nova é valiosa.
+> Este projeto está em desenvolvimento ativo e, no momento, é mantido de forma independente. Isso não significa que sua ajuda não seja bem-vinda — pelo contrário: toda revisão técnica, sugestão ou dúvida agrega muito ao projeto.
 
 ---
 
 ## 🗺️ Sobre o Projeto
 
-O **FydelisTechOS** é um sistema operacional em desenvolvimento independente. Nosso foco atual é consolidar a arquitetura, melhorar a estabilidade e expandir a documentação. Você pode conferir a jornada completa do projeto na pasta [`docs/`](./docs/).
+O **FydelisTechOS** é um sistema operacional bare-metal `x86_64` desenvolvido em Assembly (NASM) e C, com foco em inicialização UEFI/Legacy, drivers próprios, subsistema gráfico nativo e ferramentas de sistema.
+
+Você pode conhecer a arquitetura e a evolução do projeto na pasta [`docs/`](./docs/) e no [`CHANGELOG.md`](./CHANGELOG.md).
 
 ---
 
 ## 💡 Formas de Contribuir
 
-Mesmo sem escrever código, você pode ajudar muito:
+Mesmo sem escrever Assembly ou C, há várias formas de ajudar:
 
-- 🐛 **Reportar bugs:** encontrou algo que não funciona como deveria? Abra uma Issue e descreva o que aconteceu e o que esperava que acontecesse;
-- 💡 **Sugestões de melhoria:** tem uma ideia de funcionalidade ou forma de simplificar algo? Compartilhe!;
-- 📝 **Melhorar a documentação:** explicações confusas, erros de digitação ou sugestões de clareza são contribuições valiosíssimas;
-- 💬 **Perguntar:** uma dúvida pode revelar onde a documentação precisa ficar mais clara.
+- 🐛 **Reportar bugs:** encontrou algo que não funciona como esperado? Abra uma Issue descrevendo o cenário e o comportamento observado.
+- 💡 **Sugestões de melhoria:** tem uma ideia de funcionalidade, otimização ou simplificação arquitetural? Compartilhe.
+- 📝 **Documentação:** ajustes de clareza, correções e exemplos na pasta `docs/` são muito bem-vindos.
+- 💬 **Dúvidas e revisões:** perguntas técnicas ajudam a identificar pontos onde o código ou a documentação podem ficar mais claros.
 
 ---
 
 ## 📋 Diretrizes
 
 ### Antes de contribuir
-- ✅ Verifique se já não existe uma Issue ou discussão sobre o mesmo tema;
-- ✅ Mantenha o tom respeitoso e construtivo — lembre-se de que este é um projeto de aprendizado;
-- ✅ Para questões maiores, converse antes de investir muito tempo — assim alinhamos com a direção do projeto.
+- ✅ Verifique se já não existe uma Issue ou discussão aberta sobre o mesmo tema.
+- ✅ Mantenha a comunicação objetiva, respeitosa e construtiva.
+- ✅ Para mudanças estruturais maiores (boot, layout de disco, drivers centrais ou arquitetura do núcleo), abra uma Issue antes de investir muito tempo para alinharmos a abordagem.
 
-### Relatando problemas
-Ao abrir uma Issue, tente incluir:
+### Ao relatar um problema
+Inclua sempre que possível:
 - O que você estava tentando fazer;
-- O que aconteceu;
-- O que você esperava que acontecesse;
-- Passos para reproduzir o comportamento.
+- O que aconteceu e o que era esperado;
+- Passos para reproduzir;
+- **Ambiente de execução:** emulador/VM utilizado (ex.: QEMU, VirtualBox, hardware real) e modo de boot (**UEFI** ou **Legacy BIOS**).
 
-### Sobre código
-Nesta fase inicial, mudanças estruturais grandes são planejadas com cuidado para não quebrar o andamento. Pequenos ajustes, correções e melhorias são sempre bem-vindos! Seja claro sobre o que sua alteração resolve ou melhora.
+### Ao enviar código (Pull Requests)
+- Mantenha as alterações focadas e explique claramente o que o PR resolve ou melhora;
+- Não inclua artefatos gerados de compilação no commit (`.o`, `.d`, `.bin`, `.img`, `.iso`, `.efi` ou chaves locais);
+- Teste a compilação limpa (`make clean && make`) antes de enviar.
 
 ---
 
 ## 🌱 Filosofia do Projeto
 
-- **Aprendizado > Perfeição:** estamos todos aqui para crescer;
-- **Transparência:** documentamos não apenas os acertos, mas também os desafios e os caminhos que não deram certo;
-- **Persistência:** reconstruir não é recuar — é evoluir;
-- **Respeito:** cada contribuição, por menor que pareça, importa.
+- **Aprendizado > Perfeição:** evolução contínua acima de soluções engessadas.
+- **Transparência:** registramos tanto os marcos funcionais quanto as reconstruções e desafios do caminho.
+- **Persistência:** refatorar não é recuar — é amadurecer a arquitetura.
+- **Respeito:** toda contribuição, por menor que pareça, faz diferença.
 
 ---
 
-> 💜 Obrigado por fazer parte desta jornada! Cada olhar novo sobre este projeto ajuda ele — e a mim — a crescer.
-> — FydelisTechOS Team
+> 💜 Obrigado por acompanhar e contribuir com esta jornada!
+> — **FydelisTechOS**
