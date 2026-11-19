@@ -1,6 +1,6 @@
 ; ============================================================================
 ; NET_CORE.ASM — Driver Intel 82540EM (e1000 PCI MMIO) + ARP + ICMP + TCP/UDP
-; Exporta: net_inicializar, e1000_enviar_quadro, e1000_receber_quadro,
+; Exporta: e1000_pci_inicializar, e1000_enviar_quadro, e1000_receber_quadro,
 ;          net_ping_real, net_traceroute_real, net_arp_listar, net_conexoes_listar,
 ;          net_obter_mac_str, net_iface_nome, net_link_ativo, net_bytes_rx,
 ;          net_bytes_tx, mac_bytes
@@ -12,9 +12,10 @@ default rel
 %include "fydelterm.inc"
 
 extern print_string, print_newline, print_num
-extern ip_local, ip_gateway, ip_mascara, ip_para_string
+extern ip_para_string
+extern dhcp_ip_atual
 
-global net_inicializar
+global e1000_pci_inicializar
 global e1000_enviar_quadro, e1000_receber_quadro
 global net_ping_real, net_traceroute_real
 global net_arp_listar, net_conexoes_listar
@@ -74,6 +75,7 @@ msg_tr_hop1:        db '    1    <1 ms    <1 ms    <1 ms  Gateway QEMU (10.0.2.2
 msg_tr_hop2:        db '    2     2 ms     1 ms     2 ms  Destino alcancado', 10, 0
 
 section .data
+ip_local:           dd 0x0F02000A
 align 8
 net_link_ativo:     dd 0
 nic_presente:       db 0
@@ -114,7 +116,7 @@ pkt_rx_scratch:     resb 1520
 section .text
 
 ; Varre barramento PCI buscando Intel 82540EM (8086:100E) e configura aneis DMA
-net_inicializar:
+e1000_pci_inicializar:
     push    rbx
     push    rcx
     push    rdx
@@ -519,8 +521,14 @@ enviar_arp_e_icmp_real:
     mov     [rdi + 22], eax
     mov     ax, [rel mac_bytes + 4]
     mov     [rdi + 26], ax
+
+    mov     eax, [rel dhcp_ip_atual]
+    test    eax, eax
+    jnz     .usa_ip_dhcp
     mov     eax, [rel ip_local]
+.usa_ip_dhcp:
     mov     [rdi + 28], eax
+
     mov     dword [rdi + 32], 0
     mov     word  [rdi + 36], 0
     mov     [rdi + 38], ebx          ; Target IP
