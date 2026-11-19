@@ -1,6 +1,6 @@
 # 📝 Registro de Alterações — FydelisTechOS V2
 
-Este arquivo registra as principais mudanças, evoluções e marcos do FydelisTechOS e do FydelTerm.
+Este arquivo registra as principais mudanças, evoluções e marcos do **FydelisTechOS** e do **FydelTerm**.
 
 > 📌 **Nota:** O projeto está em desenvolvimento ativo. Alterações frequentes podem ocorrer antes de cada marco estável.
 
@@ -8,10 +8,11 @@ Este arquivo registra as principais mudanças, evoluções e marcos do FydelisTe
 
 ## 🚧 Em Desenvolvimento
 
-### Em andamento
-- Refinamento da interface gráfica oficial
-- Ajustes na arquitetura do subsistema gráfico
-- Expansão e organização da documentação
+### 🏗️ Em andamento
+- Estabilização do fluxo de boot híbrido (**UEFI x64** + **Legacy BIOS**) e montagem automatizada de imagem (`LBA 0` / `LBA 4096` / `LBA 8192+`)
+- Integração e testes do subsistema gráfico (`gpu_dispatch`, `virtio_gpu` e fallback linear)
+- Refinamento da interface gráfica oficial e da experiência do terminal
+- Expansão e padronização da documentação técnica (`docs/`)
 
 ---
 
@@ -20,27 +21,27 @@ Este arquivo registra as principais mudanças, evoluções e marcos do FydelisTe
 ### FydelTerm — Versão 4.2
 **Data:** Nov 2026
 
-✅ **Consolidação da versão 4.2**
-- Estrutura de núcleo consolidada e estável
-- Interface gráfica oficial definida
-- Separação clara entre lógica de sistema e interface
-- Reestruturação completa dos aplicativos migrados para arquitetura própria
-- Documentação reorganizada e expandida
+✅ **Consolidação arquitetural e interface nativa**
+- Estrutura modular organizada entre boot, núcleo, drivers, subsistema gráfico, espaço de usuário e ferramentas
+- Interface gráfica oficial nativa consolidada, sem dependência de frameworks externos
+- Separação clara entre lógica de sistema e camada visual
+- Reestruturação completa dos aplicativos migrados para a arquitetura própria
+- Documentação reorganizada em `docs/` com guias técnicos e histórico do projeto
 
-> 📖 Esta versão representa o ponto onde, após múltiplas reconstruções e aprendizado acumulado, o projeto encontrou seu caminho arquitetural.
+> 📖 Esta versão marca o ponto em que, após múltiplas reconstruções e aprendizado acumulado, o projeto consolidou uma base arquitetural própria e sustentável.
 
 ---
 
-### Migração de Interface — GTK4
+### Transição de UI — Testes com GTK4 e Adoção de Arquitetura Nativa
 **Período:** Out–Nov 2026
 
-🔄 **Transição de Qt para GTK4**
-- Reconstrução dos aplicativos que já estavam funcionais em Qt
-- Desacoplamento da lógica de sistema de frameworks externos
-- Implementação da arquitetura de interface nativa
-- Superação dos desafios de compreensão da arquitetura completa do sistema
+🔄 **Migração e desacoplamento**
+- Avaliação do **GTK4** após os primeiros protótipos em Qt
+- Decisão estratégica de abandonar frameworks externos pesados em favor de uma arquitetura gráfica nativa
+- Desacoplamento entre a lógica do sistema e a camada de apresentação
+- Mapeamento completo das fronteiras internas entre núcleo, drivers e interface
 
-> ⚠️ Período de grandes dificuldades e perdas de caminho, mas também de maior aprendizado sobre como o sistema se conecta internamente.
+> ⚠️ Período de maior complexidade arquitetural e refatoração intensa, decisivo para dominar a integração interna do sistema.
 
 ---
 
@@ -48,24 +49,23 @@ Este arquivo registra as principais mudanças, evoluções e marcos do FydelisTe
 **Período:** Set–Out 2026
 
 🧪 **Primeira interface gráfica com Qt**
-- Primeiros protótipos funcionais de interface gráfica
-- Aplicativos funcionando, mas fortemente acoplados ao framework
-- Primeiros aprendizados sobre integração interface ↔ núcleo do sistema
+- Primeiros protótipos visuais funcionais
+- Componentes operando, porém fortemente acoplados ao framework
+- Aprendizado inicial sobre comunicação entre interface e núcleo
 
-> 💡 Foi importante para entender o que precisávamos — e o que não queríamos mais para a arquitetura de longo prazo.
+> 💡 Etapa fundamental para validar requisitos visuais e definir os limites desejados para a arquitetura de longo prazo.
 
 ---
 
 ### Reestruturações do FydelTerm — Versões 1.x até 4.x
 **Período:** Ago–Nov 2026
 
-🔁 **Múltiplas reconstruções**
-- Refatoração completa da estrutura de código em diversas fases
-- Definição de escopo e propósito do projeto
-- Evolução de um simples interpretador de comandos para um ambiente de terminal robusto
-- Separação entre camadas e organização modular
+🔁 **Ciclos de refatoração**
+- Reescrita estrutural do código em múltiplas etapas
+- Definição clara de escopo e responsabilidades de cada módulo
+- Evolução de um interpretador inicial de comandos para um ambiente de terminal estruturado
 
-> 🏆 Cada reescrita não foi perda — foi o projeto crescendo junto com o conhecimento de quem o construía.
+> 🏆 Cada reestruturação consolidou o aprendizado técnico acumulado nas versões anteriores.
 
 ---
 
@@ -73,16 +73,15 @@ Este arquivo registra as principais mudanças, evoluções e marcos do FydelisTe
 **Período:** Ago 2026
 
 🌱 **Nascimento do projeto**
-- Ideia original: criar um ambiente de terminal para o FydelisTechOS
-- Primeiros comandos funcionais
-- Projeto pequeno, simples e com muito a crescer
+- Criação do ambiente de terminal base para o **FydelisTechOS**
+- Implementação dos primeiros comandos e rotinas fundamentais
 
 ---
 
 ## 📖 Legenda dos Emblemas
 
 | Emblema | Significado |
-|---|---|
+| :--- | :--- |
 | ✅ | Marco concluído e estável |
 | 🔄 | Alteração ou refatoração |
 | 🧪 | Protótipo ou experimento |
