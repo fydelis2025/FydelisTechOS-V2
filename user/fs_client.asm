@@ -95,11 +95,11 @@ fs_criar_dir:
     ret
 
 ; ══════════════════════════════════════════════════
-; Remover Arquivo
+; Remover Arquivo (syscall user-space)
 ; Entrada: rdi = caminho
 ; ══════════════════════════════════════════════════
-global fs_remover
-fs_remover:
+global fs_user_remover
+fs_user_remover:
     mov  rax, SYS_ARQUIVO_REMOVER
     syscall
     ret
