@@ -150,7 +150,7 @@ OBJS = \
     ../idioma/idioma.o \
     ../idioma/pt_br.o \
     ../apps/acessorios/calculadora.o \
-    ../apps/acessorios/fydnotes.o
+    ../apps/acessorios/fydnotes.o \
     ../apps/sistema/visualizador_logs.o \
     ../apps/sistema/explorer.o \
     ../apps/web/browser.o \
