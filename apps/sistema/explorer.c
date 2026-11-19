@@ -12,138 +12,9 @@ extern void gpu_desenhar_icone(const uint32_t *pixels, int x, int y, int w, int 
 extern uint32_t fb_largura;
 extern uint32_t fb_altura;
 
-/* Ponte com fs.asm */
-extern int fs_procurar(const char *nome);
-
-/* ================= TABELA DA ESTRUTURA PADRÃO /fyd ================= */
-typedef struct {
-    const char *pai;
-    const char *nome;
-    uint8_t     eh_dir;
-    uint64_t    tamanho;
-} fyd_no_fs_t;
-
-static const fyd_no_fs_t fyd_arvore_padrao[] = {
-    /* Raiz /fyd */
-    { "/fyd", "apps",      1, 0 },
-    { "/fyd", "config",    1, 0 },
-    { "/fyd", "dados",     1, 0 },
-    { "/fyd", "midia",     1, 0 },
-    { "/fyd", "pentest",   1, 0 },
-    { "/fyd", "rede",      1, 0 },
-    { "/fyd", "sistema",   1, 0 },
-    { "/fyd", "usuario",   1, 0 },
-
-    /* /fyd/apps */
-    { "/fyd/apps", "terminal.fapp",  0, 4096 },
-    { "/fyd/apps", "browser.fapp",   0, 8192 },
-    { "/fyd/apps", "explorer.fapp",  0, 6144 },
-    { "/fyd/apps", "editor.fapp",    0, 5120 },
-
-    /* /fyd/config */
-    { "/fyd/config", "sistema.fcfg", 0, 512  },
-
-    /* /fyd/dados */
-    { "/fyd/dados", "logs",          1, 0    },
-    { "/fyd/dados/logs", "sistema.flog", 0, 1024 },
-
-    /* /fyd/midia */
-    { "/fyd/midia", "wallpapers",    1, 0    },
-    { "/fyd/midia", "sons",          1, 0    },
-
-    /* /fyd/pentest */
-    { "/fyd/pentest", "relatorios",  1, 0    },
-    { "/fyd/pentest", "capturas",    1, 0    },
-
-    /* /fyd/rede */
-    { "/fyd/rede", "cfg",            1, 0    },
-    { "/fyd/rede/cfg", "hosts.fcfg", 0, 256  },
-
-    /* /fyd/sistema */
-    { "/fyd/sistema", "kernel.bin",  0, 131072 },
-    { "/fyd/sistema", "fydelterm.inc", 0, 4096 },
-
-    /* /fyd/usuario */
-    { "/fyd/usuario", "documentos",  1, 0    },
-    { "/fyd/usuario", "projetos",    1, 0    },
-    { "/fyd/usuario", "notas.txt",   0, 128  }
-};
-
-#define FYD_ARVORE_TOTAL (int)(sizeof(fyd_arvore_padrao) / sizeof(fyd_arvore_padrao[0]))
-
-static int fyd_str_igual(const char *a, const char *b) {
-    int i = 0;
-    while (a[i] && b[i]) {
-        if (a[i] != b[i]) return 0;
-        i++;
-    }
-    return a[i] == b[i];
-}
-
-int fs_existe(const char *caminho) {
-    if (!caminho) return 0;
-    if (fyd_str_igual(caminho, "/fyd")) return 1;
-    for (int i = 0; i < FYD_ARVORE_TOTAL; i++) {
-        if (!fyd_arvore_padrao[i].eh_dir) continue;
-        char completo[256];
-        int p = 0, j = 0;
-        while (fyd_arvore_padrao[i].pai[j] && p < 253) completo[p++] = fyd_arvore_padrao[i].pai[j++];
-        completo[p++] = '/';
-        j = 0;
-        while (fyd_arvore_padrao[i].nome[j] && p < 255) completo[p++] = fyd_arvore_padrao[i].nome[j++];
-        completo[p] = '\0';
-        if (fyd_str_igual(caminho, completo)) return 1;
-    }
-    return 0;
-}
-
-int fs_num_entradas(const char *caminho) {
-    if (!caminho) return 0;
-    int count = 0;
-    for (int i = 0; i < FYD_ARVORE_TOTAL; i++) {
-        if (fyd_str_igual(fyd_arvore_padrao[i].pai, caminho)) count++;
-    }
-    return count;
-}
-
-int fs_entrada_em(const char *caminho, int idx, char *out, int out_max) {
-    if (!caminho || !out || out_max <= 1 || idx < 0) return -1;
-    int atual = 0;
-    for (int i = 0; i < FYD_ARVORE_TOTAL; i++) {
-        if (fyd_str_igual(fyd_arvore_padrao[i].pai, caminho)) {
-            if (atual == idx) {
-                int j = 0;
-                while (fyd_arvore_padrao[i].nome[j] && j < out_max - 1) {
-                    out[j] = fyd_arvore_padrao[i].nome[j];
-                    j++;
-                }
-                out[j] = '\0';
-                return fyd_arvore_padrao[i].eh_dir ? 1 : 0;
-            }
-            atual++;
-        }
-    }
-    return -1;
-}
-
-uint64_t fs_tamanho_arquivo(const char *caminho_completo) {
-    if (!caminho_completo) return 0;
-    for (int i = 0; i < FYD_ARVORE_TOTAL; i++) {
-        if (fyd_arvore_padrao[i].eh_dir) continue;
-        char completo[256];
-        int p = 0, j = 0;
-        while (fyd_arvore_padrao[i].pai[j] && p < 253) completo[p++] = fyd_arvore_padrao[i].pai[j++];
-        completo[p++] = '/';
-        j = 0;
-        while (fyd_arvore_padrao[i].nome[j] && p < 255) completo[p++] = fyd_arvore_padrao[i].nome[j++];
-        completo[p] = '\0';
-        if (fyd_str_igual(caminho_completo, completo)) {
-            return fyd_arvore_padrao[i].tamanho;
-        }
-    }
-    return 0;
-}
-/* =================================================================== */
+/* Pontes reais com fs.asm (FAT32) */
+extern int fs_existe(const char *caminho);
+extern int fs_listar_dir(const char *caminho, char *buf_saida, int max_bytes);
 
 #define TELA_W ((int)(fb_largura ? fb_largura : 1024))
 #define TELA_H ((int)(fb_altura  ? fb_altura  : 768))
@@ -169,6 +40,7 @@ uint64_t fs_tamanho_arquivo(const char *caminho_completo) {
 #define EXP_NOME_MAX    64
 #define EXP_CAMINHO_MAX 256
 #define EXP_LISTA_MAX   64
+#define EXP_DIR_BUF_MAX 4096
 
 /* ---------- Estado ---------- */
 static char exp_caminho[EXP_CAMINHO_MAX] = "/fyd";
@@ -183,6 +55,7 @@ typedef struct {
 static exp_entrada_t exp_lista[EXP_LISTA_MAX];
 static int exp_lista_count = 0;
 static int exp_item_sel = -1;
+static char exp_dir_raw[EXP_DIR_BUF_MAX];
 
 static int exp_win_estado = EXP_WIN_NORMAL;
 static int exp_salvo_x = 110, exp_salvo_y = 65, exp_salvo_w = 610, exp_salvo_h = 350;
@@ -197,6 +70,12 @@ static void exp_str_cpy(char *dst, const char *src, int max) {
     int i = 0;
     while (src[i] && i < max - 1) { dst[i] = src[i]; i++; }
     dst[i] = '\0';
+}
+
+static void exp_str_lower(char *s) {
+    for (int i = 0; s[i]; i++) {
+        if (s[i] >= 'A' && s[i] <= 'Z') s[i] += 32;
+    }
 }
 
 static int exp_str_eq(const char *a, const char *b) {
@@ -234,33 +113,87 @@ static void exp_pai(char *caminho) {
     if (caminho[0] == '\0') { caminho[0] = '/'; caminho[1] = '\0'; }
 }
 
-/* ---------- Navegação ---------- */
+/* ---------- Leitura Real do Diretório via fs.asm ---------- */
 static void exp_carregar_diretorio(void) {
     exp_lista_count = 0;
     exp_item_sel = -1;
 
-    int total = fs_num_entradas(exp_caminho);
-    if (total < 0) total = 0;
-    if (total > EXP_LISTA_MAX) total = EXP_LISTA_MAX;
+    int n = fs_listar_dir(exp_caminho, exp_dir_raw, EXP_DIR_BUF_MAX - 1);
+    if (n <= 0) return;
+    if (n >= EXP_DIR_BUF_MAX) n = EXP_DIR_BUF_MAX - 1;
+    exp_dir_raw[n] = '\0';
 
-    for (int i = 0; i < total; i++) {
-        char nome[EXP_NOME_MAX];
-        int tipo = fs_entrada_em(exp_caminho, i, nome, EXP_NOME_MAX);
-        if (tipo < 0) continue;
-
-        exp_str_cpy(exp_lista[exp_lista_count].nome, nome, EXP_NOME_MAX);
-        exp_lista[exp_lista_count].eh_dir = (tipo == 1);
-
-        if (tipo == 0) {
-            char completo[EXP_CAMINHO_MAX];
-            exp_juntar(completo, EXP_CAMINHO_MAX, exp_caminho, nome);
-            exp_lista[exp_lista_count].tamanho = fs_tamanho_arquivo(completo);
-        } else {
-            exp_lista[exp_lista_count].tamanho = 0;
+    int pos = 0;
+    while (pos < n && exp_dir_raw[pos] && exp_lista_count < EXP_LISTA_MAX) {
+        /* Extrai uma linha terminada em '\n' ou '\0' */
+        char linha[160];
+        int li = 0;
+        while (pos < n && exp_dir_raw[pos] && exp_dir_raw[pos] != '\n' && exp_dir_raw[pos] != '\r') {
+            if (li < 159) linha[li++] = exp_dir_raw[pos];
+            pos++;
         }
-        exp_lista_count++;
+        linha[li] = '\0';
+        while (pos < n && (exp_dir_raw[pos] == '\n' || exp_dir_raw[pos] == '\r')) pos++;
+
+        if (li == 0) continue;
+
+        /* Ignora entradas especiais "." e ".." */
+        if (exp_str_eq(linha, ".") || exp_str_eq(linha, "..")) continue;
+
+        exp_entrada_t *ent = &exp_lista[exp_lista_count];
+        ent->eh_dir = 0;
+        ent->tamanho = 0;
+
+        /* Formato "<DIR> NOME" ou "[DIR] NOME" */
+        if (li > 6 && linha[0] == '<' && linha[1] == 'D' && linha[2] == 'I' && linha[3] == 'R' && linha[4] == '>') {
+            int k = 5;
+            while (linha[k] == ' ' || linha[k] == '\t') k++;
+            if (exp_str_eq(linha + k, ".") || exp_str_eq(linha + k, "..")) continue;
+            ent->eh_dir = 1;
+            exp_str_cpy(ent->nome, linha + k, EXP_NOME_MAX);
+            exp_str_lower(ent->nome);
+            exp_lista_count++;
+            continue;
+        }
+
+        /* Formato "NOME\tTAMANHO" ou "NOME   TAMANHO" */
+        int sep = -1;
+        for (int k = 0; linha[k]; k++) {
+            if (linha[k] == '\t' || (linha[k] == ' ' && linha[k + 1] == ' ')) {
+                sep = k;
+                break;
+            }
+        }
+
+        if (sep > 0) {
+            linha[sep] = '\0';
+            exp_str_cpy(ent->nome, linha, EXP_NOME_MAX);
+            exp_str_lower(ent->nome);
+
+            int k = sep + 1;
+            while (linha[k] == ' ' || linha[k] == '\t') k++;
+            if (linha[k] == '<' || linha[k] == '[') {
+                ent->eh_dir = 1;
+            } else {
+                uint64_t tam = 0;
+                while (linha[k] >= '0' && linha[k] <= '9') {
+                    tam = tam * 10 + (uint64_t)(linha[k] - '0');
+                    k++;
+                }
+                ent->tamanho = tam;
+            }
+        } else {
+            /* Fallback: verifica via fs_existe ou sufixo '/' */
+            if (linha[li - 1] == '/') {
+                linha[li - 1] = '\0';
+                ent->eh_dir = 1;
+            }
+            exp_str_cpy(ent->nome, linha, EXP_NOME_MAX);
+            exp_str_lower(ent->nome);
+        }
+
+        if (ent->nome[0] != '\0') exp_lista_count++;
     }
-    (void)fs_procurar;
 }
 
 static void exp_hist_push(const char *caminho) {
@@ -322,10 +255,8 @@ static void explorer_abrir(void) {
         app_explorer.h = exp_salvo_h;
         exp_win_estado = EXP_WIN_NORMAL;
     }
-    if (exp_lista_count == 0) {
-        exp_carregar_diretorio();
-        if (exp_hist_pos < 0) exp_hist_push(exp_caminho);
-    }
+    exp_carregar_diretorio();
+    if (exp_hist_pos < 0) exp_hist_push(exp_caminho);
 }
 
 void explorer_alternar_minimizar(void) {
@@ -378,7 +309,7 @@ static int exp_nivel(const char *caminho) {
 }
 
 static void exp_desenhar_arvore(int tree_x, int tree_y, int tree_w, int tree_h) {
-    gui_texto(tree_x + 8, tree_y + 6, "ARVORE VFS", EXP_COR_ROXO);
+    gui_texto(tree_x + 8, tree_y + 6, "ARVORE FAT32", EXP_COR_ROXO);
 
     int cy = tree_y + 26;
     int max_linhas = (tree_h - 28) / 20;
@@ -464,7 +395,7 @@ static void explorer_desenhar(void) {
     /* Barra de título */
     gui_retangulo(x + 2, y + 2, w - 4, 26, EXP_COR_TOPO);
     gpu_desenhar_icone(icone_pasta_aberta, x + 8, y + 6, 16, 16);
-    gui_texto(x + 30, y + 7, "FydelisExplorer - VFS /fyd", EXP_COR_CIANO);
+    gui_texto(x + 30, y + 7, "FydelisExplorer - FAT32 /fyd", EXP_COR_CIANO);
 
     /* Botões: [_] Minimizar, [+] Maximizar/Restaurar, [X] Fechar */
     exp_btn(EXP_BTN_FECHAR(x, w), y + 4, 20, 20, EXP_COR_VERMELHO, EXP_COR_VERMELHO,
@@ -559,7 +490,7 @@ static void explorer_desenhar(void) {
     gui_retangulo(x + 2, y + h - 22, w - 4, 20, EXP_COR_TOPO);
     char status[64];
     int si = 0;
-    const char *p1 = "FydVFS | Itens: ";
+    const char *p1 = "FAT32 | Itens: ";
     for (int i = 0; p1[i]; i++) status[si++] = p1[i];
     {
         int v = exp_lista_count;
