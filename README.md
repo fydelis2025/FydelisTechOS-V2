@@ -63,7 +63,7 @@ O **FydelisTechOS** é um sistema operacional em desenvolvimento, construído de
 ## 📸 Interface do Sistema
 
 <p align="center">
-  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/FydelTerm.png" alt="FydelisTechOS Dashboard" width="100%">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/FyelTerm.png" alt="FydelisTechOS Dashboard" width="100%">
 </p>
 <p align="center">
   <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/Login.png" alt="FydelisTechOS Dashboard" width="100%">
