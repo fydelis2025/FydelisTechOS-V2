@@ -1,6 +1,6 @@
 # ==========================================
 # FYDELIS TECH OS — FydelTerm Kernel Makefile
-# v2.4: integracao com tools/ e assets graficos
+# v2.5: Boot Hibrido (Legacy MBR + UEFI + Secure Boot) & Rede Real e1000
 # Padrao de inclusao: src/include/syscalls
 # De Salvador • Bahia
 # ==========================================
@@ -17,6 +17,7 @@ ASFLAGS   = -f elf64 \
             -I ../user/ \
             -I ../system/ \
             -I ../idioma/ \
+            -I ../boot/ \
             -I ../ \
             -Wall
 
@@ -45,6 +46,7 @@ CFLAGS    = -m64 \
             -I../user/ \
             -I../system/ \
             -I../idioma/ \
+            -I../boot/ \
             -I../ \
             -Wall \
             -MMD -MP
@@ -55,6 +57,12 @@ TOOLS_DIR = $(ROOT_DIR)/tools
 ASSETS_DIR= $(ROOT_DIR)/assets
 INC_DIR   = ../include
 BUILD_DIR ?= build
+
+# Caminhos padrao OVMF (Debian/Ubuntu)
+OVMF_CODE ?= /usr/share/OVMF/OVMF_CODE_4M.fd
+OVMF_VARS ?= /usr/share/OVMF/OVMF_VARS_4M.fd
+OVMF_SB_CODE ?= /usr/share/OVMF/OVMF_CODE_4M.ms.fd
+OVMF_SB_VARS ?= /usr/share/OVMF/OVMF_VARS_4M.ms.fd
 
 # ==========================================
 # ASSETS GRAFICOS GERADOS VIA tools/
@@ -105,12 +113,12 @@ OBJS = \
     ../drivers/video.o \
     ../drivers/rede.o \
     ../drivers/net_core.o \
+    ../drivers/dhcp.o \
     ../drivers/rede_bridge.o \
     ../drivers/wifi.o \
     ../drivers/bluetooth.o \
     ../drivers/cpu.o \
     ../drivers/impressora.o \
-    ../drivers/dhcp_servidor.o \
     ../drivers/usb.o \
     ../drivers/mouse.o \
     ../drivers/texto.o \
@@ -165,8 +173,8 @@ OBJS = \
 # ==========================================
 # ALVO PRINCIPAL
 # ==========================================
-all: assets fydelterm.img iso $(BUILD_DIR)/fyd_boot.cfg
-	@echo "Build do kernel, ISO e configuracao concluido com sucesso!"
+all: assets BOOTX64.EFI fydelterm.img iso $(BUILD_DIR)/fyd_boot.cfg
+	@echo "Build hibrido (Legacy + UEFI + Secure Boot) concluido com sucesso!"
 
 $(BUILD_DIR)/fyd_boot.cfg: ../boot/fyd_boot.cfg
 	@mkdir -p $(BUILD_DIR)
@@ -221,21 +229,24 @@ exec.o: exec.c $(HEADERS_ASSETS)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 # ==========================================
-# BOOTLOADER E EFI STUB
+# BOOTLOADER LEGACY (MBR) E LOADER UEFI (BOOTX64.EFI)
 # ==========================================
 boot.bin: ../boot/bootloader.asm
-	@echo "  AS       Bootloader"
-	$(ASM) -f bin -I ../include/ $< -o $@
+	@echo "  AS       Bootloader Legacy (MBR)"
+	$(ASM) -f bin -I ../include/ -I ../boot/ $< -o $@
 	@sz=$$(stat -c%s $@); \
-	if [ $$sz -gt 512 ]; then \
-		echo "ERRO: bootloader cresceu ($$sz bytes > 512). Reduza o codigo!"; \
+	if [ $$sz -ne 512 ]; then \
+		echo "ERRO: bootloader deve ter exatamente 512 bytes (atual: $$sz bytes)!"; \
 		rm -f $@; exit 1; \
 	fi
-	truncate -s 512 $@
 
-BOOTX64.EFI: ../boot/efi_stub.asm
-	@echo "  AS       EFI Stub (BOOTX64.EFI)"
-	$(ASM) -f bin -I ../include/ $< -o $@
+BOOTX64.EFI: ../boot/boot_uefi.asm
+	@echo "  AS       Loader UEFI PE32+ (BOOTX64.EFI)"
+	$(ASM) -f bin -I ../include/ -I ../boot/ $< -o $@
+	@if [ -f ../boot/keys/DB.key ] && [ -f ../boot/keys/DB.crt ] && command -v sbsign >/dev/null 2>&1; then \
+		echo "  SIGN     Assinando BOOTX64.EFI para Secure Boot..."; \
+		sbsign --key ../boot/keys/DB.key --cert ../boot/keys/DB.crt --output $@ $@; \
+	fi
 
 # ==========================================
 # LINK DO KERNEL
@@ -245,8 +256,10 @@ kernel.bin: $(OBJS)
 	$(LD) $(LDFLAGS) $(OBJS) -o $@
 
 # ==========================================
-# IMAGEM DE DISCO
-# LBA 4096 (offset 2 MiB) = kernel.bin
+# IMAGEM DE DISCO HIBRIDA (LEGACY MBR + PARTICAO EFI FAT32)
+# LBA 0                 = MBR Legacy (446B codigo + Tabela Particoes + 0xAA55)
+# LBA 2048..4095 (1MiB) = ESP FAT32 (\EFI\BOOT\BOOTX64.EFI)
+# LBA 4096 (offset 2MiB)= kernel.bin
 # LBA 8192 / 10752 / 13312 = Wallpapers (640x512 RGBA)
 # ==========================================
 WALLPAPERS_PNG = \
@@ -254,16 +267,28 @@ WALLPAPERS_PNG = \
     $(ASSETS_DIR)/images/login.png \
     $(ASSETS_DIR)/images/desktop.png
 
-fydelterm.img: boot.bin kernel.bin $(TOOLS_DIR)/gravar_wallpapers_disco.py $(WALLPAPERS_PNG)
-	@echo "  IMG      $@"
-	dd if=/dev/zero of=$@ bs=1M count=8 status=none
-	dd if=boot.bin   of=$@ conv=notrunc bs=512 count=1 status=none
+fydelterm.img: boot.bin BOOTX64.EFI kernel.bin $(TOOLS_DIR)/gravar_wallpapers_disco.py $(WALLPAPERS_PNG)
+	@echo "  IMG      $@ (Hibrida Legacy BIOS + UEFI)"
+	dd if=/dev/zero of=$@ bs=1M count=32 status=none
+	@if command -v sfdisk >/dev/null 2>&1; then \
+		printf "label: dos\nstart=2048, size=2048, type=ef\nstart=16384, size=49152, type=0c\n" | sfdisk --quiet $@; \
+	fi
+	dd if=boot.bin   of=$@ bs=1 count=446 conv=notrunc status=none
+	printf '\x55\xaa' | dd of=$@ bs=1 seek=510 count=2 conv=notrunc status=none
+	@if command -v mformat >/dev/null 2>&1 && command -v mcopy >/dev/null 2>&1; then \
+		dd if=/dev/zero of=esp.img bs=512 count=2048 status=none; \
+		mformat -i esp.img -F -v "FYDEL_EFI" ::; \
+		mmd -i esp.img ::/EFI ::/EFI/BOOT; \
+		mcopy -i esp.img BOOTX64.EFI ::/EFI/BOOT/BOOTX64.EFI; \
+		dd if=esp.img of=$@ bs=512 seek=2048 conv=notrunc status=none; \
+		rm -f esp.img; \
+	fi
 	dd if=kernel.bin of=$@ conv=notrunc bs=512 seek=4096 status=none
 	@echo "  PY       Gravando wallpapers nos LBAs 8192, 10752 e 13312"
 	$(PYTHON) $(TOOLS_DIR)/gravar_wallpapers_disco.py $@ $(ASSETS_DIR)/images
 
 # ==========================================
-# ISO
+# ISO HIBRIDA (LEGACY EL-TORITO + UEFI BOOTX64.EFI)
 # ==========================================
 boot_flp.img: boot.bin kernel.bin
 	@echo "  FLP      $@"
@@ -271,13 +296,14 @@ boot_flp.img: boot.bin kernel.bin
 	dd if=boot.bin   of=$@ conv=notrunc bs=512 count=1 status=none
 	dd if=kernel.bin of=$@ conv=notrunc bs=512 seek=4096 status=none
 
-iso: boot_flp.img fydelterm.img
+iso: boot_flp.img BOOTX64.EFI fydelterm.img
 	@echo "  ISO      fydelterm.iso"
 	rm -rf iso_root
-	mkdir -p iso_root/boot
+	mkdir -p iso_root/boot iso_root/EFI/BOOT
 	cp boot_flp.img  iso_root/boot/boot.img
 	cp fydelterm.img iso_root/boot/fydelterm.img
 	cp kernel.bin    iso_root/boot/kernel.bin
+	cp BOOTX64.EFI   iso_root/EFI/BOOT/BOOTX64.EFI
 	cp ../boot/fyd_boot.cfg iso_root/boot/fyd_boot.cfg 2>/dev/null || true
 	genisoimage -o fydelterm.iso \
 		-b boot/boot.img \
@@ -287,18 +313,49 @@ iso: boot_flp.img fydelterm.img
 		-V "FYDELIS_TECH_OS" \
 		iso_root/
 	rm -rf iso_root
-	@echo "ISO pronta: fydelterm.iso"
+	@echo "ISO hibrida pronta: fydelterm.iso"
+
 # ==========================================
-# EXECUTAR
+# EXECUTAR NO QEMU (LEGACY BIOS / UEFI / SECURE BOOT + REDE E1000)
 # ==========================================
+QEMU_NET = -netdev user,id=net0 -device e1000,netdev=net0
+
 run: fydelterm.img
-	@echo "Iniciando FydelisTech OS via Disco Rigido..."
+	@echo "Iniciando FydelisTech OS (Modo Legacy BIOS + Rede e1000)..."
 	qemu-system-x86_64 \
 		-drive format=raw,file=fydelterm.img,if=ide,index=0,media=disk \
 		-boot c \
-		-nic none \
+		$(QEMU_NET) \
 		-no-reboot \
 		-no-shutdown \
+		-m 512M \
+		-smp 2 \
+		-display gtk \
+		-serial stdio
+
+run-uefi: fydelterm.img
+	@echo "Iniciando FydelisTech OS (Modo UEFI 64-bit OVMF + Rede e1000)..."
+	cp -f $(OVMF_VARS) OVMF_VARS_local.fd 2>/dev/null || true
+	qemu-system-x86_64 \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_CODE) \
+		-drive if=pflash,format=raw,file=OVMF_VARS_local.fd \
+		-drive format=raw,file=fydelterm.img,if=ide,index=0,media=disk \
+		$(QEMU_NET) \
+		-m 512M \
+		-smp 2 \
+		-display gtk \
+		-serial stdio
+
+run-secboot: fydelterm.img
+	@echo "Iniciando FydelisTech OS (Modo UEFI + SECURE BOOT ATIVO)..."
+	cp -f $(OVMF_SB_VARS) OVMF_VARS_sb_local.fd 2>/dev/null || true
+	qemu-system-x86_64 \
+		-machine q35,smm=on \
+		-global driver=cfi.pflash01,property=secure,value=on \
+		-drive if=pflash,format=raw,readonly=on,file=$(OVMF_SB_CODE) \
+		-drive if=pflash,format=raw,file=OVMF_VARS_sb_local.fd \
+		-drive format=raw,file=fydelterm.img,if=ide,index=0,media=disk \
+		$(QEMU_NET) \
 		-m 512M \
 		-smp 2 \
 		-display gtk \
@@ -307,6 +364,7 @@ run: fydelterm.img
 debug: fydelterm.img
 	qemu-system-x86_64 \
 		-drive format=raw,file=fydelterm.img \
+		$(QEMU_NET) \
 		-m 512M -smp 2 -serial stdio \
 		-s -S
 
@@ -326,10 +384,10 @@ clean:
 	rm -f ../idioma/*.o ../idioma/*.d
 	rm -f ../apps/acessorios/*.o ../apps/acessorios/*.d
 	rm -f ../apps/sistema/*.o ../apps/sistema/*.d
-	rm -f *.bin *.EFI fydelterm.img boot_flp.img fydelterm.iso
+	rm -f *.bin *.EFI esp.img OVMF_VARS_local.fd OVMF_VARS_sb_local.fd fydelterm.img boot_flp.img fydelterm.iso
 	@echo "Limpo!"
 
 distclean: clean
 	rm -f $(HEADERS_ASSETS)
 
-.PHONY: all assets iso run debug clean distclean
+.PHONY: all assets iso run run-uefi run-secboot debug clean distclean
