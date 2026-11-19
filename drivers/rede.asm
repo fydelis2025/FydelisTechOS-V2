@@ -16,7 +16,7 @@ extern argc, argv
 ; ============================================================================
 ; PONTE COM DRIVER HARDWARE E1000 (net_core.asm)
 ; ============================================================================
-extern net_inicializar
+extern e1000_pci_inicializar
 extern net_iface_nome
 extern net_obter_mac_str
 extern net_link_ativo
@@ -42,11 +42,11 @@ extern dhcp_gateway
 extern dhcp_dns
 
 ; ============================================================================
-; EXPORTACOES PARA KERNEL, TERMINAL, GUI (exec.c) E DHCP.ASM
+; EXPORTACOES PARA KERNEL, TERMINAL, GUI (exec.c), TCP.C E DHCP.ASM
 ; ============================================================================
 global do_ipconfig, do_wifi, do_ping, do_arp, do_netstat, do_traceroute
 global tx_pacote, rx_processa
-global inicializar_nic_mmio, mac_addr
+global inicializar_nic_mmio, mac_addr, meu_ip
 global rede_definir_ip_estatico, ip_para_string
 global net_obter_ip_str, net_obter_mascara_str
 global net_obter_gateway_str, net_obter_dns_str
@@ -84,6 +84,10 @@ str_mask_atual: db '255.255.255.0', 0, 0, 0
 str_gw_atual:   db '10.0.2.2', 0, 0, 0, 0, 0, 0, 0, 0
 str_dns_atual:  db '10.0.2.3', 0, 0, 0, 0, 0, 0, 0, 0
 
+; IPv4 ativo em host-order (0x0A00020F = 10.0.2.15) consumido por tcp.c e rede.asm
+align 4
+meu_ip:         dd 0x0A00020F
+
 section .bss
 align 16
 mac_addr:       resb 6
@@ -99,7 +103,7 @@ section .text
 ; PONTE DE HARDWARE PARA O DHCP.ASM (tx_pacote / rx_processa / mac_addr)
 ; ============================================================================
 inicializar_nic_mmio:
-    call    net_inicializar
+    call    e1000_pci_inicializar
     ; Sincroniza mac_addr (6 bytes) com mac_bytes do net_core.asm
     mov     eax, [rel mac_bytes]
     mov     [rel mac_addr], eax
@@ -136,6 +140,7 @@ rede_definir_ip_estatico:
     push    rdi
     push    rdx
 
+    mov     [rel meu_ip], edi
     mov     [rel ipv4_atual_u32], edi
     mov     [rel mask_atual_u32], esi
     mov     [rel gw_atual_u32], edx
