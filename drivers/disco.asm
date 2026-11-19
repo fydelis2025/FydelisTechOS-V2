@@ -1,35 +1,47 @@
-; ==========================================
-; 💽 DISCO.ASM — Driver de Acesso ao Disco Físico
-; ATA/IDE · Leitura/Escrita de Setores · Identificação
-; FydelisTechOS v2.2 · Salvador • Bahia 🇧🇷
-; ==========================================
+; ============================================================================
+; DISCO.ASM — Driver Fisico ATA/IDE Real (Master 0xE0 / Slave 0xF0)
+; Alinhado com fs.asm (rdi = LBA, rsi = buffer) · Sem Simulacao
+; FydelisTechOS v4.2 · Salvador • Bahia
+; ============================================================================
 BITS 64
 default rel
 %include "fydelterm.inc"
 
-; ========== PORTAS ATA ==========
+; ========== PORTAS ATA PRIMARIAS ==========
 ATA_DATA               equ 0x1F0
+ATA_ERROR              equ 0x1F1
 ATA_SECTORS            equ 0x1F2
 ATA_LBA_LO             equ 0x1F3
 ATA_LBA_MID            equ 0x1F4
 ATA_LBA_HI             equ 0x1F5
+ATA_DRIVE_HEAD         equ 0x1F6
 ATA_CMD                equ 0x1F7
+ATA_STATUS             equ 0x1F7
+ATA_ALT_STATUS         equ 0x3F6
+
+; ========== COMANDOS & FLAGS ATA ==========
 ATA_CMD_READ           equ 0x20
 ATA_CMD_WRITE          equ 0x30
 ATA_CMD_IDENTIFY       equ 0xEC
 ATA_CMD_FLUSH          equ 0xE7
+
 ATA_STATUS_BSY         equ 0x80
 ATA_STATUS_RDY         equ 0x40
 ATA_STATUS_DRQ         equ 0x08
 ATA_STATUS_ERR         equ 0x01
 
+ATA_SEL_MASTER         equ 0xE0      ; index=0 (fydelterm.img - boot)
+ATA_SEL_SLAVE          equ 0xF0      ; index=1 (fyd_data.img - FAT32 dados)
+
 ; ========== TAMANHOS ==========
 SETOR_TAMANHO          equ 512
 BUFFER_TAMANHO         equ 4096
 
-; ========== EXPORTAÇÃO ==========
+; ========== EXPORTACAO ==========
 global disco_ler_setor
 global disco_escrever_setor
+global disco_selecionar
+global disco_obter_selecionado
 global obter_tamanho_disco
 global detectar_disco
 global identificar_disco
@@ -40,27 +52,88 @@ global syscall_obter_tamanho
 global syscall_ler_setor
 global syscall_escrever_setor
 
+section .data
+; Padrao: 1 = Primary Slave (0xF0 -> fyd_data.img no QEMU index=1)
+; Use disco_selecionar(0) se quiser apontar para o Master (0xE0)
+drive_selecionado:     db 1
+
 section .bss
 align 16
-buffer_leitura:   resb BUFFER_TAMANHO
-buffer_escrita:   resb BUFFER_TAMANHO
-info_disco:       resw 256          ; Dados do IDENTIFY
-tamanho_total:    resq 1            ; Total de setores LBA48
-disco_ativo:      resd 1            ; 0=nenhum, 1=primário
-buffer_setor:     resb 512
+buffer_leitura:        resb BUFFER_TAMANHO
+buffer_escrita:        resb BUFFER_TAMANHO
+info_disco:            resw 256      ; 512 bytes do IDENTIFY
+tamanho_master:        resq 1        ; Total de setores do Master (index=0)
+tamanho_slave:         resq 1        ; Total de setores do Slave (index=1)
+disco_identificado:    resb 2        ; Flags [0]=master, [1]=slave
+buffer_setor:          resb 512
 
 section .text
 
-; ==========================================
-; ✅ DETECTAR DISCO — Verifica se existe
-; Entrada: RDI = número do disco (0=primário)
-; Saída: RAX = 1=encontrado, 0=não
-; ==========================================
+; ============================================================================
+; AUXILIAR INTERNO: atraso de 400ns apos troca de drive (leitura de 0x3F6 x4)
+; ============================================================================
+ata_delay_400ns:
+    push rdx
+    mov dx, ATA_ALT_STATUS
+    in al, dx
+    in al, dx
+    in al, dx
+    in al, dx
+    pop rdx
+    ret
+
+; ============================================================================
+; AUXILIAR INTERNO: retorna byte de selecao (0xE0 ou 0xF0) para drive em RDI
+; ============================================================================
+ata_byte_drive:
+    cmp rdi, 1
+    je .slave
+    mov al, ATA_SEL_MASTER
+    ret
+.slave:
+    mov al, ATA_SEL_SLAVE
+    ret
+
+; ============================================================================
+; SELECIONAR DISCO ATIVO PARA O FS
+; Entrada: RDI = 0 (Primary Master / index=0) ou 1 (Primary Slave / index=1)
+; Saida:   RAX = 1 se detectado, 0 se ausente
+; ============================================================================
+disco_selecionar:
+    and rdi, 1
+    mov [rel drive_selecionado], dil
+    call detectar_disco
+    ret
+
+disco_obter_selecionado:
+    xor eax, eax
+    mov al, [rel drive_selecionado]
+    ret
+
+; ============================================================================
+; DETECTAR DISCO — Verifica se existe no canal ATA
+; Entrada: RDI = 0 (Master) ou 1 (Slave)
+; Saida:   RAX = 1 encontrado, 0 ausente
+; ============================================================================
 detectar_disco:
     push rcx
     push rdx
-    xor rdi, rdi                ; apenas disco primário por ora
-    mov rdx, ATA_CMD
+    push rdi
+
+    and rdi, 1
+    call ata_byte_drive
+    mov dx, ATA_DRIVE_HEAD
+    out dx, al
+    call ata_delay_400ns
+
+    ; Status 0xFF ou 0x00 indica barramento flutuante (sem dispositivo)
+    mov dx, ATA_STATUS
+    in al, dx
+    cmp al, 0xFF
+    je .nao_encontrado
+    test al, al
+    jz .nao_encontrado
+
     mov rcx, 100000
 .aguardar:
     in al, dx
@@ -68,25 +141,27 @@ detectar_disco:
     jz .pronto
     dec rcx
     jnz .aguardar
-    jmp .nao_encontrado         ; timeout → sem disco
+    jmp .nao_encontrado
+
 .pronto:
-    in al, dx
     test al, ATA_STATUS_ERR
     jnz .nao_encontrado
     mov rax, 1
     jmp .fim
+
 .nao_encontrado:
     xor eax, eax
 .fim:
+    pop rdi
     pop rdx
     pop rcx
     ret
 
-; ==========================================
-; ✅ IDENTIFICAR DISCO — Pega modelo, serial, tamanho
-; Entrada: RDI = número do disco, RSI = buffer saída (512 bytes)
-; Saída: RAX = 1=sucesso, 0=falha
-; ==========================================
+; ============================================================================
+; IDENTIFICAR DISCO — Executa ATA IDENTIFY (0xEC) e extrai setores reais
+; Entrada: RDI = 0 (Master) ou 1 (Slave), RSI = buffer 512B (ou 0 para ignorar)
+; Saida:   RAX = 1 sucesso, 0 falha
+; ============================================================================
 identificar_disco:
     push rbx
     push rcx
@@ -94,31 +169,43 @@ identificar_disco:
     push rsi
     push rdi
     push r8
+    push r9
 
-    mov r8, rsi                 ; buffer do chamador
+    and rdi, 1
+    mov r9, rdi                 ; r9 = indice do disco (0 ou 1)
+    mov r8, rsi                 ; r8 = buffer opcional do chamador
 
-    call detectar_disco
-    cmp rax, 1
-    jne .falha
+    ; Seleciona drive
+    mov rdi, r9
+    call ata_byte_drive
+    mov dx, ATA_DRIVE_HEAD
+    out dx, al
+    call ata_delay_400ns
 
-    ; Enviar comando IDENTIFY
-    mov rdx, ATA_SECTORS
+    ; Zera registradores LBA antes do IDENTIFY (padrao ATA)
+    mov dx, ATA_SECTORS
     xor al, al
     out dx, al
-    mov rdx, ATA_LBA_LO
-    xor al, al
+    mov dx, ATA_LBA_LO
     out dx, al
-    mov rdx, ATA_LBA_MID
-    xor al, al
+    mov dx, ATA_LBA_MID
     out dx, al
-    mov rdx, ATA_LBA_HI
-    xor al, al
+    mov dx, ATA_LBA_HI
     out dx, al
-    mov rdx, ATA_CMD
+
+    ; Envia comando IDENTIFY
+    mov dx, ATA_CMD
     mov al, ATA_CMD_IDENTIFY
     out dx, al
+    call ata_delay_400ns
 
-    ; Aguardar BSY zerar (com timeout)
+    ; Status 0x00 significa que o drive nao existe
+    in al, dx
+    test al, al
+    jz .falha
+    cmp al, 0xFF
+    je .falha
+
     mov rcx, 100000
 .aguardar_bsy:
     in al, dx
@@ -127,34 +214,65 @@ identificar_disco:
     dec rcx
     jnz .aguardar_bsy
     jmp .falha
+
 .bsy_liberado:
+    ; Verifica se nao e dispositivo ATAPI (LBA_MID/HI != 0)
+    mov dx, ATA_LBA_MID
+    in al, dx
+    test al, al
+    jnz .falha
+    mov dx, ATA_LBA_HI
+    in al, dx
+    test al, al
+    jnz .falha
+
+    mov dx, ATA_STATUS
+    mov rcx, 100000
+.aguardar_drq:
     in al, dx
     test al, ATA_STATUS_ERR
     jnz .falha
     test al, ATA_STATUS_DRQ
-    jz .falha
+    jnz .ler_ident
+    dec rcx
+    jnz .aguardar_drq
+    jmp .falha
 
-    ; Ler 256 palavras = 512 bytes
+.ler_ident:
     mov rcx, 256
     lea rdi, [rel info_disco]
-    mov rdx, ATA_DATA
+    mov dx, ATA_DATA
     rep insw
 
-    ; Extrair tamanho LBA48 (palavras 100-103 → offset 200)
+    ; Extrai total de setores: tenta LBA48 (palavras 100-103 -> offset 200)
+    ; e faz fallback para LBA28 (palavras 60-61 -> offset 120)
     mov rax, [rel info_disco + 200]
-    mov [rel tamanho_total], rax
+    test rax, rax
+    jnz .salva_tam
+    mov eax, [rel info_disco + 120]
 
-    ; Copiar para buffer do chamador
+.salva_tam:
+    lea rbx, [rel tamanho_master]
+    mov [rbx + r9 * 8], rax
+    lea rbx, [rel disco_identificado]
+    mov byte [rbx + r9], 1
+
+    ; Copia para buffer do chamador apenas se RSI != 0
+    test r8, r8
+    jz .ok
     mov rdi, r8
     lea rsi, [rel info_disco]
-    mov rcx, 512
-    rep movsb
+    mov rcx, 512 / 8
+    rep movsq
 
+.ok:
     mov rax, 1
     jmp .fim
+
 .falha:
     xor eax, eax
 .fim:
+    pop r9
     pop r8
     pop rdi
     pop rsi
@@ -163,35 +281,42 @@ identificar_disco:
     pop rbx
     ret
 
-; ==========================================
-; ✅ OBTER TAMANHO DO DISCO — setores totais
-; Saída: RAX = total de setores (512B)
-; ==========================================
+; ============================================================================
+; OBTER TAMANHO DO DISCO ATIVO (setores de 512 bytes)
+; ============================================================================
 obter_tamanho_disco:
-    push rdx
+    push rbx
+    push rdi
+    push rsi
 
-    cmp qword [rel tamanho_total], 0
-    jne .ja_salvo
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    and edi, 1
 
-    ; Ainda não identificado → identifica agora
-    mov edi, 0
-    mov esi, 0
+    lea rbx, [rel disco_identificado]
+    cmp byte [rbx + rdi], 1
+    je .ja_identificado
+
+    xor esi, esi
     call identificar_disco
 
-.ja_salvo:
-    mov rax, [rel tamanho_total]
-    cmp rax, 0
-    jne .fim
-    mov rax, 1000000000         ; fallback ~500GB em setores
-.fim:
-    pop rdx
+.ja_identificado:
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    and edi, 1
+    lea rbx, [rel tamanho_master]
+    mov rax, [rbx + rdi * 8]
+
+    pop rsi
+    pop rdi
+    pop rbx
     ret
 
-; ==========================================
-; ✅ LER SETOR
-; Assinatura: bool disco_ler_setor(const char* disco, u64 lba, void* buffer)
-;   rdi = caminho (ignorado), rsi = LBA, rdx = buffer saída
-; ==========================================
+; ============================================================================
+; LER SETOR (INTERFACE DIRETA PARA FS.ASM)
+; Entrada: RDI = LBA (setor), RSI = ponteiro buffer (512 bytes)
+; Saida:   RAX = 1 sucesso, 0 falha
+; ============================================================================
 disco_ler_setor:
     push rbx
     push rcx
@@ -199,42 +324,75 @@ disco_ler_setor:
     push rsi
     push rdi
     push r8
+    push r9
 
-    mov r8, rdx                 ; buffer de saída
+    test rsi, rsi
+    jz .falha
 
-    ; Validar LBA
-    cmp rsi, [rel tamanho_total]
+    mov r9, rdi                 ; r9 = LBA
+    mov r8, rsi                 ; r8 = buffer destino
+
+    ; Auto-identifica disco ativo se ainda nao foi identificado
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    and edi, 1
+    lea rbx, [rel disco_identificado]
+    cmp byte [rbx + rdi], 1
+    je .checa_limite
+
+    xor esi, esi
+    call identificar_disco
+    test rax, rax
+    jz .falha
+
+.checa_limite:
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    and edi, 1
+    lea rbx, [rel tamanho_master]
+    mov rax, [rbx + rdi * 8]
+    test rax, rax
+    jz .prepara_leitura         ; se hardware nao reportar tamanho, tenta ler LBA
+    cmp r9, rax
     jae .falha
 
-    ; Preparar comando LBA28 — CORREÇÃO: byte baixo primeiro
-    mov rax, rsi
-    mov rdx, ATA_SECTORS
-    mov al, 1                   ; 1 setor
+.prepara_leitura:
+    ; Seleciona drive (0xE0 Master ou 0xF0 Slave) + bits 24-27 do LBA
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    call ata_byte_drive
+    mov bl, al
+
+    mov rax, r9
+    shr rax, 24
+    and al, 0x0F
+    or al, bl
+    mov dx, ATA_DRIVE_HEAD
+    out dx, al
+    call ata_delay_400ns
+
+    mov dx, ATA_SECTORS
+    mov al, 1
     out dx, al
 
-    mov rax, rsi
-    mov rdx, ATA_LBA_LO
-    out dx, al                  ; bits 0-7
-    shr rax, 8
-    mov rdx, ATA_LBA_MID
-    out dx, al                  ; bits 8-15
-    shr rax, 8
-    mov rdx, ATA_LBA_HI
-    out dx, al                  ; bits 16-23
-    shr rax, 8
-    and al, 0x0F                ; bits 24-27
-    or al, 0xE0                 ; bit 6=1 (LBA) + modo master
-    mov rdx, ATA_LBA_HI         ; (registro drive é 0x1F6 = LBA_HI+1)
-    inc edx
+    mov rax, r9
+    mov dx, ATA_LBA_LO
     out dx, al
 
-    ; Enviar comando
-    mov rdx, ATA_CMD
+    shr rax, 8
+    mov dx, ATA_LBA_MID
+    out dx, al
+
+    shr rax, 8
+    mov dx, ATA_LBA_HI
+    out dx, al
+
+    mov dx, ATA_CMD
     mov al, ATA_CMD_READ
     out dx, al
 
-    ; Aguardar dados
-    mov rcx, 100000
+    mov dx, ATA_STATUS
+    mov rcx, 200000
 .aguardar:
     in al, dx
     test al, ATA_STATUS_BSY
@@ -249,19 +407,18 @@ disco_ler_setor:
     jmp .falha
 
 .dados_prontos:
-    ; Ler 512 bytes para o buffer do chamador
-    mov rcx, 128                ; 128 x 4 bytes = 512
+    mov rcx, 128                ; 128 dwords = 512 bytes
     mov rdi, r8
-    mov rdx, ATA_DATA
+    mov dx, ATA_DATA
     rep insd
 
-    ; Cache flush pós-leitura não é necessário; sucesso
     mov rax, 1
     jmp .fim
 
 .falha:
     xor eax, eax
 .fim:
+    pop r9
     pop r8
     pop rdi
     pop rsi
@@ -270,11 +427,11 @@ disco_ler_setor:
     pop rbx
     ret
 
-; ==========================================
-; ✅ ESCREVER SETOR
-; Assinatura: bool disco_escrever_setor(const char* disco, u64 lba, const void* buffer)
-;   rdi = caminho (ignorado), rsi = LBA, rdx = buffer entrada
-; ==========================================
+; ============================================================================
+; ESCREVER SETOR (INTERFACE DIRETA PARA FS.ASM)
+; Entrada: RDI = LBA (setor), RSI = ponteiro buffer (512 bytes)
+; Saida:   RAX = 1 sucesso, 0 falha
+; ============================================================================
 disco_escrever_setor:
     push rbx
     push rcx
@@ -282,36 +439,74 @@ disco_escrever_setor:
     push rsi
     push rdi
     push r8
+    push r9
 
-    mov r8, rdx                 ; buffer de entrada
+    test rsi, rsi
+    jz .falha
 
-    ; Preparar comando LBA28 — mesma correção de bytes
-    mov rdx, ATA_SECTORS
+    mov r9, rdi                 ; r9 = LBA
+    mov r8, rsi                 ; r8 = buffer origem
+
+    ; Auto-identifica disco ativo se ainda nao foi identificado
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    and edi, 1
+    lea rbx, [rel disco_identificado]
+    cmp byte [rbx + rdi], 1
+    je .checa_limite
+
+    xor esi, esi
+    call identificar_disco
+    test rax, rax
+    jz .falha
+
+.checa_limite:
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    and edi, 1
+    lea rbx, [rel tamanho_master]
+    mov rax, [rbx + rdi * 8]
+    test rax, rax
+    jz .prepara_escrita
+    cmp r9, rax
+    jae .falha
+
+.prepara_escrita:
+    xor edi, edi
+    mov dil, [rel drive_selecionado]
+    call ata_byte_drive
+    mov bl, al
+
+    mov rax, r9
+    shr rax, 24
+    and al, 0x0F
+    or al, bl
+    mov dx, ATA_DRIVE_HEAD
+    out dx, al
+    call ata_delay_400ns
+
+    mov dx, ATA_SECTORS
     mov al, 1
     out dx, al
 
-    mov rax, rsi
-    mov rdx, ATA_LBA_LO
-    out dx, al
-    shr rax, 8
-    mov rdx, ATA_LBA_MID
-    out dx, al
-    shr rax, 8
-    mov rdx, ATA_LBA_HI
-    out dx, al
-    shr rax, 8
-    and al, 0x0F
-    or al, 0xE0
-    mov rdx, ATA_LBA_HI + 1     ; registro drive (0x1F6)
+    mov rax, r9
+    mov dx, ATA_LBA_LO
     out dx, al
 
-    ; Enviar comando de escrita
-    mov rdx, ATA_CMD
+    shr rax, 8
+    mov dx, ATA_LBA_MID
+    out dx, al
+
+    shr rax, 8
+    mov dx, ATA_LBA_HI
+    out dx, al
+
+    mov dx, ATA_CMD
     mov al, ATA_CMD_WRITE
     out dx, al
 
-    ; Aguardar pronto para receber dados
-    mov rcx, 100000
+    mov dx, ATA_STATUS
+    mov rcx, 200000
 .aguardar:
     in al, dx
     test al, ATA_STATUS_BSY
@@ -326,13 +521,12 @@ disco_escrever_setor:
     jmp .falha
 
 .dados_prontos:
-    ; Escrever 512 bytes do buffer do chamador
-    mov rcx, 128
+    mov rcx, 128                ; 128 dwords = 512 bytes
     mov rsi, r8
-    mov rdx, ATA_DATA
+    mov dx, ATA_DATA
     rep outsd
 
-    ; Aguardar conclusão da escrita (com timeout)
+    mov dx, ATA_STATUS
     mov rcx, 1000000
 .espera_fim:
     in al, dx
@@ -341,6 +535,7 @@ disco_escrever_setor:
     dec rcx
     jnz .espera_fim
     jmp .falha
+
 .gravado:
     call flush_disco
     mov rax, 1
@@ -349,6 +544,7 @@ disco_escrever_setor:
 .falha:
     xor eax, eax
 .fim:
+    pop r9
     pop r8
     pop rdi
     pop rsi
@@ -357,15 +553,16 @@ disco_escrever_setor:
     pop rbx
     ret
 
-; ==========================================
-; ✅ FLUSH — Garante gravação em disco
-; ==========================================
+; ============================================================================
+; FLUSH — Esvazia cache de escrita do controlador ATA
+; ============================================================================
 flush_disco:
     push rcx
     push rdx
-    mov rdx, ATA_CMD
+    mov dx, ATA_CMD
     mov al, ATA_CMD_FLUSH
     out dx, al
+    mov dx, ATA_STATUS
     mov rcx, 1000000
 .aguardar:
     in al, dx
@@ -379,18 +576,29 @@ flush_disco:
     pop rcx
     ret
 
-; ==========================================
-; Pontes de syscall (convite x64 System V)
-; ==========================================
+; ============================================================================
+; PONTES DE SYSCALL (ABI System V: rdi=disco_id, rsi=LBA, rdx=buffer)
+; ============================================================================
 syscall_obter_tamanho:
     call obter_tamanho_disco
     ret
 
 syscall_ler_setor:
-    ; rdi=disco, rsi=LBA, rdx=buffer → repassa direto
+    push rdi
+    and rdi, 1
+    mov [rel drive_selecionado], dil
+    mov rdi, rsi                ; LBA
+    mov rsi, rdx                ; buffer
     call disco_ler_setor
+    pop rdi
     ret
 
 syscall_escrever_setor:
+    push rdi
+    and rdi, 1
+    mov [rel drive_selecionado], dil
+    mov rdi, rsi                ; LBA
+    mov rsi, rdx                ; buffer
     call disco_escrever_setor
+    pop rdi
     ret
