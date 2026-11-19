@@ -113,7 +113,7 @@ OBJS = \
     ../drivers/video.o \
     ../drivers/rede.o \
     ../drivers/net_core.o \
-    ../drivers/dhcp.o \
+    ../drivers/dhcp_servidor.o \
     ../drivers/rede_bridge.o \
     ../drivers/wifi.o \
     ../drivers/bluetooth.o \
