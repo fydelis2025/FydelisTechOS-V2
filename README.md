@@ -10,7 +10,7 @@
 </div>
 
 <p align="center">
-  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/assets/images/logo_menu.png" alt="FydelisTechOS Dashboard" width="100%">
+  <img src="https://github.com/fydelis2025/FydelisTechOS-V2/blob/main/assets/images/logo_menu.png" alt="FydelisTechOS Dashboard" width="60%">
 </p>
 
 Bem-vindo ao centro oficial de documentação do **FydelisTechOS — V2**. Aqui você encontra a visão completa do projeto: sua história, arquitetura, estado atual e os caminhos percorridos até chegar onde estamos.
