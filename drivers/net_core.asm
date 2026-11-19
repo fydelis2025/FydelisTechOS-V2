@@ -1,10 +1,28 @@
-global e1000_enviar_quadro, e1000_receber_quadro, mac_bytes
-
 ; ============================================================================
 ; RECEBER QUADRO ETHERNET BRUTO DO ANEL RX DO HARDWARE E1000
 ; Entrada: rdi = buffer de destino (>= 1518 bytes)
 ; Saida:   rax = quantidade de bytes lidos (0 se nenhum quadro pronto)
 ; ============================================================================
+BITS 64
+DEFAULT REL
+
+; Constantes do controlador Intel 82540EM (e1000)
+PKT_BUF_SIZE    equ 2048
+NUM_RX_DESC     equ 32
+E1000_REG_RDT   equ 0x2818
+
+; Símbolos exportados pelo driver e1000 (rede.asm / pci.asm)
+extern nic_presente
+extern e1000_mmio_base
+extern rx_cur_idx
+extern rx_descs
+extern rx_buffers
+extern rx_total_bytes
+
+global e1000_enviar_quadro, e1000_receber_quadro, mac_bytes
+
+section .text
+
 e1000_receber_quadro:
     push    rbx
     push    rcx
