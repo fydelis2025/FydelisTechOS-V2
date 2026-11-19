@@ -231,7 +231,7 @@ exec.o: exec.c $(HEADERS_ASSETS)
 # ==========================================
 # BOOTLOADER LEGACY (MBR) E LOADER UEFI (BOOTX64.EFI)
 # ==========================================
-boot.bin: ../boot/bootloader.asm
+boot.bin: ../boot/boot_legacy.asm
 	@echo "  AS       Bootloader Legacy (MBR)"
 	$(ASM) -f bin -I ../include/ -I ../boot/ $< -o $@
 	@sz=$$(stat -c%s $@); \
