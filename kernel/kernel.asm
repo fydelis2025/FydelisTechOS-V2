@@ -38,6 +38,8 @@ extern bt_inicializar
 extern inicializar_nic_mmio
 extern net_inicializar
 
+extern e1000_pci_inicializar
+
 extern hosts_inicializar
 extern fydlog_inicializar
 
@@ -639,6 +641,7 @@ start:
 .sem_bt:
 
     call    inicializar_nic_mmio
+    call    e1000_pci_inicializar
     call    net_inicializar
 
     lea     rsi, [rel msg_hw_ok]
