@@ -12,13 +12,13 @@ default rel
 ; ============================================================================
 extern print_string, print_num
 extern dhcp_cliente_iniciar, dhcp_cliente_processar
-extern dhcp_ip_atual
+extern dhcp_ip_atual, dhcp_estado
 extern arquivo_abrir, arquivo_ler_linha, arquivo_escrever_linha
 extern arquivo_existe, arquivo_criar
 
 global strcmpi, strcmp, strcpy, strlen
 global int_para_str, print_formatado
-global rx_bytes_total, tx_bytes_total, dhcp_estado
+global rx_bytes_total, tx_bytes_total
 global usb_listar_dispositivos, dhcp_exec
 global arquivo_fechar, arquivo_ler_todo, obter_unidade_sistema
 global fila_criar, fila_adicionar, fila_processar, fila_limpar
@@ -34,7 +34,6 @@ section .bss
 align 16
 rx_bytes_total:   resq 1
 tx_bytes_total:   resq 1
-dhcp_estado:      resd 1            ; Estado do cliente DHCP exportado para o linker
 
 ; Fila de impressão simples: 16 entradas x 128 bytes
 fila_buf:         resb 16 * 128
