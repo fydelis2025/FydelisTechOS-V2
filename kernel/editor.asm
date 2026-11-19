@@ -1,7 +1,7 @@
 ; ======================================
 ; EDITOR FYDEL v3.0 — Estilo Nano
-; Buffer de texto, edição completa, Ctrl+O salvar, Ctrl+X sair
-; De Salvador • Bahia 🇧🇷
+; Buffer de texto, edição completa, F10 salvar, ESC sair
+; Conectado ao fs.asm real (FAT32) · De Salvador • Bahia
 ; ======================================
 BITS 64
 default rel
@@ -10,7 +10,7 @@ default rel
 extern clear_screen, print_string, print_char, print_newline
 extern get_key, move_cursor
 
-; >>> CONECTE ÀS FUNÇÕES DE FS DO SEU KERNEL <<<
+; Funções reais do driver FAT32 (fs.asm)
 extern salvar_arquivo        ; rdi=nome, rsi=buffer, rdx=tamanho -> rax=1 ok
 extern carregar_arquivo      ; rdi=nome, rsi=buffer, rdx=tamanho_max -> rax=bytes lidos
 
@@ -41,12 +41,12 @@ msg_titulo:     db 'FYDEL Editor - F10 - Salvar  ESC - Sair  F1 Ajuda', 0
 msg_modificado: db '*Modificado* ', 0
 msg_limpar_bar: db '                                        ', 0
 msg_salvar_ok:  db 'Salvo: ', 0
-msg_sem_fs:     db 'ERRO: funcao de FS nao disponivel (salvar_arquivo externo)', 0
+msg_sem_fs:     db 'ERRO ao gravar arquivo no disco FAT32!', 0
 msg_arq_vazio:  db 'Informe o nome: ', 0
 msg_conf_sair:  db 'Descartar alteracoes? (S/N) ', 0
-msg_ajuda:      db 'FYDEL: Setas movem | Enter nova linha | Backspace apaga | ^O salva | ^X sai', 0
+msg_ajuda:      db 'FYDEL: Setas movem | Enter nova linha | Backspace apaga | F10 salva | ESC sai', 0
 msg_editando:   db 'Editando novo arquivo (sem nome informado)', 0
-msg_nome_salvar:  db 'Salvar como (nome do arquivo): ', 0
+msg_nome_salvar:  db 'Salvar como (ex: /fyd/usuario/documentos/nota.txt): ', 0
 msg_pausa_ajuda:  db 'Pressione qualquer tecla...', 0
 barra_status:   db 0
 
@@ -288,7 +288,7 @@ inserir_char:
     push    rsi
     push    rdi
 
-    mov     bl, al                  ; Salva o caractere digitado em BL de forma segura
+    mov     bl, al
 
     mov     rcx, [rel tam_texto]
     cmp     rcx, EDIT_BUF_TAM - 1
@@ -298,7 +298,6 @@ inserir_char:
     sub     rax, [rel editor_cursor]
     jz      .escreve_direto
 
-    ; Desloca os caracteres à direita para abrir espaço
     lea     rsi, [rel buffer_edit]
     add     rsi, [rel tam_texto]
     dec     rsi
@@ -313,11 +312,11 @@ inserir_char:
 .escreve_direto:
     lea     rdi, [rel buffer_edit]
     add     rdi, [rel editor_cursor]
-    mov     byte [rdi], bl          ; Grava o caractere guardado no buffer
+    mov     byte [rdi], bl
 
-    inc     qword [rel editor_cursor]   ; Avança o cursor
-    inc     qword [rel tam_texto]       ; Incrementa o tamanho total do texto
-    mov     byte [rel modificado], 1    ; Marca o ficheiro como modificado
+    inc     qword [rel editor_cursor]
+    inc     qword [rel tam_texto]
+    mov     byte [rel modificado], 1
 
 .fim_inserir:
     pop     rdi
@@ -452,7 +451,7 @@ cursor_linha_abaixo:
     ret
 
 ; ==========================================
-; renderizar — redesenha tela (sem o indicador modificado)
+; renderizar — redesenha tela
 ; ==========================================
 renderizar:
     push    rsi
@@ -464,7 +463,6 @@ renderizar:
     call    print_string
     call    print_newline
 
-    ; Imprime o buffer inteiro usando índice seguro (rbx)
     xor     rbx, rbx             
 .loop_impr:
     cmp     rbx, [rel tam_texto]
@@ -485,7 +483,6 @@ renderizar:
 .fim_impr:
 
     call    print_newline
-    ; Removemos a impressão do msg_modificado para limpar a barra
     lea     rsi, [rel msg_limpar_bar]
     call    print_string
     call    print_newline
@@ -553,15 +550,4 @@ ler_nome_arquivo:
     call    print_newline
     pop     rdi
     pop     rsi
-    ret
-    
-; ==========================================
-; STUBS TEMPORÁRIOS DE SISTEMA DE FICHEIROS
-; ==========================================
-carregar_arquivo:
-    mov     rax, -1
-    ret
-
-salvar_arquivo:
-    mov     rax, 1
     ret
