@@ -25,7 +25,7 @@ global fila_criar, fila_adicionar, fila_processar, fila_limpar
 global sys_usb_listar, sys_usb_enviar_dados, sys_usb_encontrar_dispositivo
 global sys_rede_enviar
 global wifi_tx_quadro, wifi_rx_quadro
-global fs_criar_arquivo, fs_ler_arquivo
+global fs_criar_arquivo
 
 ; ============================================================================
 ; DADOS NÃO INICIALIZADOS (.bss)
@@ -169,7 +169,7 @@ print_formatado:
     ret
 
 ; ============================================================================
-; USB & REDE STUBS (As funções reais de rede estão em rede_bridge.asm)
+; USB & REDE STUBS
 ; ============================================================================
 
 usb_listar_dispositivos:
@@ -278,10 +278,6 @@ arquivo_ler_todo:
     ret
 
 fs_criar_arquivo:
-    xor     eax, eax
-    ret
-
-fs_ler_arquivo:
     xor     eax, eax
     ret
 
