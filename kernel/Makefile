@@ -80,6 +80,7 @@ OBJS = \
     heap.o \
     context.o \
     scheduler.o \
+    pcb.o \
     exceptions.o \
     fs.o \
     buffer.o \
