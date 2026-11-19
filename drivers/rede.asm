@@ -1,33 +1,56 @@
 ; ============================================================================
-; REDE_CMD.ASM — Comandos de Rede Nativos (Bare-Metal Real · Sem C++/Qt)
-; Comandos: ipconfig, wifi, ping, arp, netstat, traceroute
+; REDE.ASM — Comandos FydelTerm + Ponte Unificada (net_core.asm <-> dhcp.asm)
+; Bare-Metal Real (Intel e1000 PCI + ARP + IPv4 + ICMP + DHCP RFC 2131)
 ; FydelisTech OS v4.2 · Salvador - Bahia
 ; ============================================================================
 BITS 64
 default rel
 %include "fydelterm.inc"
 
-; Rotinas de Terminal
+; ============================================================================
+; ROTINAS DO TERMINAL
+; ============================================================================
 extern print_string, print_newline, print_char, print_num
 extern argc, argv
 
 ; ============================================================================
-; PONTE REAL COM A PILHA DE REDE NATIVA DO KERNEL (net_core.asm / e1000 / rtl8139)
+; PONTE COM DRIVER HARDWARE E1000 (net_core.asm)
 ; ============================================================================
-extern net_iface_nome           ; -> rax = ponteiro string (ex: "eth0 (e1000)")
-extern net_obter_mac_str        ; -> rax = ponteiro string MAC formatado
-extern net_obter_ip_str         ; -> rax = ponteiro string IPv4 atual
-extern net_obter_mascara_str    ; -> rax = ponteiro string Mascara
-extern net_obter_gateway_str    ; -> rax = ponteiro string Gateway
-extern net_obter_dns_str        ; -> rax = ponteiro string DNS
-extern net_link_ativo           ; -> rax = 1 link UP no hardware, 0 DOWN
-extern net_bytes_rx             ; -> rax = total de bytes recebidos pelo NIC
-extern net_bytes_tx             ; -> rax = total de bytes transmitidos pelo NIC
-extern net_dhcp_renovar         ; -> rax = 1 sucesso, 0 timeout DHCP
-extern net_ping_real            ; rdi = str IP/host -> rax = 1 respondeu, 0 perda
-extern net_arp_listar           ; -> imprime entradas reais do cache ARP do kernel
-extern net_conexoes_listar      ; -> imprime sockets/portas TCP/UDP ativos
-extern net_traceroute_real      ; rdi = str IP/host -> executa sondas TTL=1..30
+extern net_inicializar
+extern net_iface_nome
+extern net_obter_mac_str
+extern net_link_ativo
+extern net_bytes_rx
+extern net_bytes_tx
+extern net_ping_real
+extern net_arp_listar
+extern net_conexoes_listar
+extern net_traceroute_real
+extern e1000_enviar_quadro      ; rsi = buf, rcx = len
+extern e1000_receber_quadro     ; rdi = buf -> rax = bytes lidos (0 se vazio)
+extern mac_bytes                ; 6 bytes do MAC real lido da placa PCI
+
+; ============================================================================
+; PONTE COM CLIENTE/SERVIDOR DHCP REAL (dhcp.asm)
+; ============================================================================
+extern dhcp_cliente_iniciar
+extern dhcp_cliente_processar
+extern dhcp_ler_status
+extern dhcp_ip_atual
+extern dhcp_mascara
+extern dhcp_gateway
+extern dhcp_dns
+
+; ============================================================================
+; EXPORTACOES PARA KERNEL, TERMINAL, GUI (exec.c) E DHCP.ASM
+; ============================================================================
+global do_ipconfig, do_wifi, do_ping, do_arp, do_netstat, do_traceroute
+global tx_pacote, rx_processa
+global inicializar_nic_mmio, mac_addr
+global rede_definir_ip_estatico, ip_para_string
+global net_obter_ip_str, net_obter_mascara_str
+global net_obter_gateway_str, net_obter_dns_str
+global net_dhcp_renovar
 
 section .data
 align 16
@@ -47,16 +70,217 @@ lbl_arp:      db '=== Tabela ARP Real (Cache Kernel) ===', 0
 lbl_conn:     db '=== Sockets / Conexoes Ativas ===', 0
 msg_ping_uso: db 'Uso: ping <ip_ipv4>  (ex: ping 10.0.2.2)', 0
 msg_tr_uso:   db 'Uso: traceroute <ip_ipv4>', 0
-msg_dhcp_ok:  db '[OK] Configuracao IPv4 renovada via DHCP real.', 0
-msg_dhcp_err: db '[ERRO] Falha ao obter resposta do servidor DHCP.', 0
+msg_dhcp_ok:  db '[OK] Configuracao IPv4 obtida via DHCP real.', 0
+msg_dhcp_err: db '[ERRO] Timeout DHCP: mantendo configuracao atual.', 0
 msg_wifi_hw:  db '[INFO] Modo Bare-Metal: operando via NIC PCI Ethernet (eth0).', 0
 lbl_bytes:    db ' B', 0
 lbl_kilo:     db ' KB', 0
 lbl_mega:     db ' MB', 0
 lbl_giga:     db ' GB', 0
 
+; Strings dinamicas atualizadas automaticamente pelo DHCP ACK ou IP Fixo
+str_ip_atual:   db '10.0.2.15', 0, 0, 0, 0, 0, 0, 0
+str_mask_atual: db '255.255.255.0', 0, 0, 0
+str_gw_atual:   db '10.0.2.2', 0, 0, 0, 0, 0, 0, 0, 0
+str_dns_atual:  db '10.0.2.3', 0, 0, 0, 0, 0, 0, 0, 0
+
+section .bss
+align 16
+mac_addr:       resb 6
+                resb 2
+ipv4_atual_u32: resd 1
+mask_atual_u32: resd 1
+gw_atual_u32:   resd 1
+dns_atual_u32:  resd 1
+
 section .text
-global do_ipconfig, do_wifi, do_ping, do_arp, do_netstat, do_traceroute
+
+; ============================================================================
+; PONTE DE HARDWARE PARA O DHCP.ASM (tx_pacote / rx_processa / mac_addr)
+; ============================================================================
+inicializar_nic_mmio:
+    call    net_inicializar
+    ; Sincroniza mac_addr (6 bytes) com mac_bytes do net_core.asm
+    mov     eax, [rel mac_bytes]
+    mov     [rel mac_addr], eax
+    mov     ax, [rel mac_bytes + 4]
+    mov     [rel mac_addr + 4], ax
+    ret
+
+; Entrada: rdi = ponteiro do quadro Ethernet, rsi = tamanho em bytes
+tx_pacote:
+    push    rsi
+    push    rcx
+    mov     rcx, rsi                ; e1000_enviar_quadro espera rcx = tamanho
+    mov     rsi, rdi                ; e1000_enviar_quadro espera rsi = buffer
+    call    e1000_enviar_quadro
+    pop     rcx
+    pop     rsi
+    ret
+
+; Entrada: rdi = buffer de destino (>= 1518 bytes)
+; Saida:   rax = quantidade de bytes recebidos (0 se fila RX vazia)
+rx_processa:
+    call    e1000_receber_quadro
+    ret
+
+; ============================================================================
+; ATUALIZAR IP, MASCARA E GATEWAY (Chamado pelo DHCP ACK ou UI IP Fixo)
+; Entrada: edi = IPv4 (host order, ex: 0x0A00020F = 10.0.2.15)
+;          esi = Mascara (host order, ex: 0xFFFFFF00)
+;          edx = Gateway (host order, ex: 0x0A000202)
+; ============================================================================
+rede_definir_ip_estatico:
+    push    rbx
+    push    rsi
+    push    rdi
+    push    rdx
+
+    mov     [rel ipv4_atual_u32], edi
+    mov     [rel mask_atual_u32], esi
+    mov     [rel gw_atual_u32], edx
+    mov     [rel dns_atual_u32], edx
+
+    ; Formata str_ip_atual
+    push    rsi
+    push    rdx
+    lea     rsi, [rel str_ip_atual]
+    call    ip_para_string
+    pop     rdx
+    pop     rsi
+
+    ; Formata str_mask_atual
+    push    rdx
+    mov     edi, esi
+    lea     rsi, [rel str_mask_atual]
+    call    ip_para_string
+    pop     rdx
+
+    ; Formata str_gw_atual e str_dns_atual
+    mov     edi, edx
+    lea     rsi, [rel str_gw_atual]
+    call    ip_para_string
+
+    mov     edi, [rel gw_atual_u32]
+    lea     rsi, [rel str_dns_atual]
+    call    ip_para_string
+
+    pop     rdx
+    pop     rdi
+    pop     rsi
+    pop     rbx
+    ret
+
+; ============================================================================
+; CONVERTER IPv4 (32-bit host order) PARA STRING ASCII ("A.B.C.D")
+; Entrada: edi = IP (byte mais significativo = 1o octeto)
+;          rsi = buffer de destino (minimo 16 bytes)
+; ============================================================================
+ip_para_string:
+    push    rax
+    push    rbx
+    push    rcx
+    push    rdx
+    push    rdi
+    push    rsi
+
+    mov     ebx, edi
+    mov     rdi, rsi                ; rdi = cursor de escrita
+    mov     ecx, 4                  ; 4 octetos
+
+.prox_octeto:
+    rol     ebx, 8                  ; traz octeto mais significativo para BL
+    movzx   eax, bl
+
+    ; Converte byte (0..255) para decimal ASCII
+    push    rcx
+    mov     ecx, 10
+    xor     edx, edx
+    div     ecx                     ; eax = quociente, edx = unidade
+    push    rdx                     ; empilha unidade
+    test    eax, eax
+    jz      .escreve_1dig
+
+    xor     edx, edx
+    div     ecx                     ; eax = centena, edx = dezena
+    test    eax, eax
+    jz      .escreve_2dig
+
+    add     al, '0'
+    stosb
+.escreve_2dig:
+    mov     al, dl
+    add     al, '0'
+    stosb
+.escreve_1dig:
+    pop     rdx
+    mov     al, dl
+    add     al, '0'
+    stosb
+    pop     rcx
+
+    dec     ecx
+    jz      .fim_ip_str
+    mov     byte [rdi], '.'
+    inc     rdi
+    jmp     .prox_octeto
+
+.fim_ip_str:
+    mov     byte [rdi], 0
+
+    pop     rsi
+    pop     rdi
+    pop     rdx
+    pop     rcx
+    pop     rbx
+    pop     rax
+    ret
+
+; ============================================================================
+; ACESSORES DE CONFIGURACAO ATIVA
+; ============================================================================
+net_obter_ip_str:
+    lea     rax, [rel str_ip_atual]
+    ret
+
+net_obter_mascara_str:
+    lea     rax, [rel str_mask_atual]
+    ret
+
+net_obter_gateway_str:
+    lea     rax, [rel str_gw_atual]
+    ret
+
+net_obter_dns_str:
+    lea     rax, [rel str_dns_atual]
+    ret
+
+; ============================================================================
+; EXECUTAR HANDSHAKE DHCP COMPLETO (DISCOVER -> OFFER -> REQUEST -> ACK)
+; Saida: rax = 1 sucesso (BOUND), 0 timeout
+; ============================================================================
+net_dhcp_renovar:
+    push    rcx
+
+    call    dhcp_cliente_iniciar
+    mov     ecx, 3000000            ; janela de polling para resposta do roteador/QEMU
+
+.aguardar_bound:
+    call    dhcp_cliente_processar
+    call    dhcp_ler_status
+    cmp     eax, 3                  ; DHCP_ST_BOUND = 3
+    je      .sucesso
+    dec     ecx
+    jnz     .aguardar_bound
+
+    xor     rax, rax
+    pop     rcx
+    ret
+
+.sucesso:
+    mov     rax, 1
+    pop     rcx
+    ret
 
 ; ============================================================================
 ; COMANDO: ipconfig  (ou "ipconfig /renew" para disparar DHCP real)
@@ -67,7 +291,6 @@ do_ipconfig:
     push    rdi
     push    rax
 
-    ; Verifica se foi passado argumento "/renew" ou "dhcp"
     mov     rax, [rel argc]
     cmp     rax, 2
     jl      .exibir_info
@@ -100,7 +323,6 @@ do_ipconfig:
     call    print_newline
     call    print_newline
 
-    ; Interface PCI detectada
     lea     rsi, [rel lbl_if]
     call    print_string
     call    net_iface_nome
@@ -108,7 +330,6 @@ do_ipconfig:
     call    print_string
     call    print_newline
 
-    ; Endereco MAC real lido da EEPROM/MMIO da placa
     lea     rsi, [rel lbl_mac]
     call    print_string
     call    net_obter_mac_str
@@ -116,7 +337,6 @@ do_ipconfig:
     call    print_string
     call    print_newline
 
-    ; Endereco IPv4
     lea     rsi, [rel lbl_ip]
     call    print_string
     call    net_obter_ip_str
@@ -124,7 +344,6 @@ do_ipconfig:
     call    print_string
     call    print_newline
 
-    ; Mascara de sub-rede
     lea     rsi, [rel lbl_mask]
     call    print_string
     call    net_obter_mascara_str
@@ -132,7 +351,6 @@ do_ipconfig:
     call    print_string
     call    print_newline
 
-    ; Gateway padrao
     lea     rsi, [rel lbl_gw]
     call    print_string
     call    net_obter_gateway_str
@@ -140,7 +358,6 @@ do_ipconfig:
     call    print_string
     call    print_newline
 
-    ; Servidor DNS
     lea     rsi, [rel lbl_dns]
     call    print_string
     call    net_obter_dns_str
@@ -152,7 +369,6 @@ do_ipconfig:
     call    print_newline
     call    print_newline
 
-    ; Estado fisico do Link (registrador STATUS do NIC)
     call    net_link_ativo
     cmp     rax, 1
     je      .conectado
@@ -165,7 +381,6 @@ do_ipconfig:
     call    print_newline
     call    print_newline
 
-    ; Contadores reais RX/TX
     lea     rsi, [rel hdr_stats]
     call    print_string
     call    print_newline
@@ -189,7 +404,7 @@ do_ipconfig:
     ret
 
 ; ============================================================================
-; COMANDO: wifi (informa status do barramento wireless / fallback Ethernet)
+; COMANDO: wifi
 ; ============================================================================
 do_wifi:
     push    rsi
@@ -200,7 +415,7 @@ do_wifi:
     ret
 
 ; ============================================================================
-; COMANDO: ping <ip> (envia pacotes ICMP Echo Request reais pelo NIC)
+; COMANDO: ping <ip>
 ; ============================================================================
 do_ping:
     push    rbx
@@ -230,7 +445,7 @@ do_ping:
     ret
 
 ; ============================================================================
-; COMANDO: arp (exibe tabela ARP real resolvida na rede local)
+; COMANDO: arp
 ; ============================================================================
 do_arp:
     push    rsi
@@ -242,7 +457,7 @@ do_arp:
     ret
 
 ; ============================================================================
-; COMANDO: netstat (exibe sockets/portas reais da pilha TCP/UDP)
+; COMANDO: netstat
 ; ============================================================================
 do_netstat:
     push    rsi
@@ -254,7 +469,7 @@ do_netstat:
     ret
 
 ; ============================================================================
-; COMANDO: traceroute <ip> (sondas ICMP/UDP com incremento de TTL)
+; COMANDO: traceroute <ip>
 ; ============================================================================
 do_traceroute:
     push    rbx
