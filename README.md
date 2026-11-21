@@ -136,7 +136,4 @@ Este projeto não foi construído sozinho. Um muito obrigado a:
 
 Obrigado por visitar e acompanhar nosso desenvolvimento. Seja bem-vindo(a) a esta jornada!
 
-> 
-> *"Construir algo do zero, especialmente sozinho, é uma das formas mais corajosas de aprender. Há dias em que tudo faz sentido, e dias em que parece que nada funciona. Isso não é falha — é parte do processo. O FydelisTechOS não é perfeito, mas é real: erros, ajustes, reconstruções e tudo. E é exatamente essa jornada que faz dele algo único."* — FydelisTechOS Team
-
-Obrigado por visitar e acompanhar nosso desenvolvimento. Seja bem-vindo(a) a esta jornada!
+Adiel Santos Fontes, FydelisTechOS
