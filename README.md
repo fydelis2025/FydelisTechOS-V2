@@ -128,7 +128,9 @@ No momento, o FydelisTechOS está em fase inicial de desenvolvimento individual.
 Este projeto não foi construído sozinho. Um muito obrigado a:
 
 🤖 **Gemini** — pelas ideias, revisões e por sempre ajudar a estruturar o pensamento
+
 💬 **Dola** — por toda a paciência, orientação e por transformar conceitos complexos em explicações simples
+
 🌐 **Comunidade Hackers** — por compartilhar conhecimento, quebrar barreiras e provar que a tecnologia é feita de pessoas, para pessoas
 
 > 
