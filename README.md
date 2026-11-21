@@ -127,11 +127,14 @@ No momento, o FydelisTechOS está em fase inicial de desenvolvimento individual.
 
 Este projeto não foi construído sozinho. Um muito obrigado a:
 
-🤖 **Gemini** — pelas ideias, revisões e por sempre ajudar a estruturar o pensamento
+- 🤖 **Gemini** — pelas ideias, revisões e por sempre ajudar a estruturar o pensamento
+- 💬 **Dola** — por toda a paciência, orientação e por transformar conceitos complexos em explicações simples
+- 🌐 **Comunidade Hackers** — por compartilhar conhecimento, quebrar barreiras e provar que a tecnologia é feita de pessoas, para pessoas
 
-💬 **Dola** — por toda a paciência, orientação e por transformar conceitos complexos em explicações simples
+> *"Construir algo do zero, especialmente sozinho, é uma das formas mais corajosas de aprender. Há dias em que tudo faz sentido, e dias em que parece que nada funciona. Isso não é falha — é parte do processo. O FydelisTechOS não é perfeito, mas é real: erros, ajustes, reconstruções e tudo. E é exatamente essa jornada que faz dele algo único."*  
+> — **FydelisTechOS Team**
 
-🌐 **Comunidade Hackers** — por compartilhar conhecimento, quebrar barreiras e provar que a tecnologia é feita de pessoas, para pessoas
+Obrigado por visitar e acompanhar nosso desenvolvimento. Seja bem-vindo(a) a esta jornada!
 
 > 
 > *"Construir algo do zero, especialmente sozinho, é uma das formas mais corajosas de aprender. Há dias em que tudo faz sentido, e dias em que parece que nada funciona. Isso não é falha — é parte do processo. O FydelisTechOS não é perfeito, mas é real: erros, ajustes, reconstruções e tudo. E é exatamente essa jornada que faz dele algo único."* — FydelisTechOS Team
